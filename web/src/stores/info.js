@@ -38,6 +38,8 @@ export const useInfoStore = defineStore('info', () => {
     ...(infoConfig.value.footer || {})
   }))
 
+  const frontend = computed(() => infoConfig.value.frontend || {})
+
   // 动作方法
   function setInfoConfig(newConfig) {
     infoConfig.value = newConfig
@@ -60,6 +62,9 @@ export const useInfoStore = defineStore('info', () => {
 
       if (response.success && response.data) {
         setInfoConfig(response.data)
+        if (response.data.frontend?.browser_title) {
+          document.title = response.data.frontend.browser_title
+        }
         console.debug('信息配置加载成功:', response.data)
         return response.data
       } else {
@@ -85,6 +90,7 @@ export const useInfoStore = defineStore('info', () => {
     organization,
     branding,
     footer,
+    frontend,
 
     // 方法
     toggleDebugMode,

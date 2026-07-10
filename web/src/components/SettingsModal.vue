@@ -53,7 +53,7 @@
             v-if="userStore.isAdmin"
           >
             <MessageCircle class="icon" :size="18" />
-            <span>前台配置</span>
+            <span>前端配置</span>
           </div>
           <div
             class="sider-item"
@@ -72,15 +72,6 @@
           >
             <Users class="icon" :size="18" />
             <span>部门管理</span>
-          </div>
-          <div
-            class="sider-item"
-            :class="{ activesec: activeTab === 'agentEnv' }"
-            @click="activeTab = 'agentEnv'"
-            v-if="userStore.isLoggedIn"
-          >
-            <SquareTerminal class="icon" :size="18" />
-            <span>环境变量</span>
           </div>
         </div>
 
@@ -106,14 +97,6 @@
         </div>
         <div
           class="nav-item"
-          :class="{ active: activeTab === 'agentEnv' }"
-          @click="activeTab = 'agentEnv'"
-          v-if="userStore.isLoggedIn"
-        >
-          沙盒环境变量
-        </div>
-        <div
-          class="nav-item"
           :class="{ active: activeTab === 'base' }"
           @click="activeTab = 'base'"
           v-if="userStore.isAdmin"
@@ -126,7 +109,7 @@
           @click="activeTab = 'frontendChat'"
           v-if="userStore.isAdmin"
         >
-          前台配置
+          前端配置
         </div>
         <div
           class="nav-item"
@@ -155,10 +138,6 @@
 
           <div v-if="activeTab === 'userConfig' && userStore.isLoggedIn">
             <UserConfigSettingsCard />
-          </div>
-
-          <div v-if="activeTab === 'agentEnv' && userStore.isLoggedIn">
-            <AgentEnvSettingsCard />
           </div>
 
           <div v-show="activeTab === 'base'" v-if="userStore.isAdmin">
@@ -190,13 +169,11 @@ import {
   MessageCircle,
   Settings,
   SlidersHorizontal,
-  SquareTerminal,
   User,
   Users,
   X
 } from 'lucide-vue-next'
 import AccountSettingsComponent from '@/components/AccountSettingsComponent.vue'
-import AgentEnvSettingsCard from '@/components/AgentEnvSettingsCard.vue'
 import BasicSettingsSection from '@/components/BasicSettingsSection.vue'
 import FrontendChatSettingsComponent from '@/components/FrontendChatSettingsComponent.vue'
 import UserConfigSettingsCard from '@/components/UserConfigSettingsCard.vue'
@@ -226,7 +203,7 @@ const visible = computed({
 
 const availableTabs = computed(() => {
   const tabs = []
-  if (userStore.isLoggedIn) tabs.push('account', 'userConfig', 'agentEnv')
+  if (userStore.isLoggedIn) tabs.push('account', 'userConfig')
   if (userStore.isAdmin) tabs.push('base', 'frontendChat', 'user')
   if (userStore.isSuperAdmin) tabs.push('department')
   return tabs

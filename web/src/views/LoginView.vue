@@ -156,14 +156,14 @@
                   <button
                     type="button"
                     :class="['portal-tab', { active: authMode === 'login' }]"
-                    @click="authMode = 'login'"
+                    @click="switchAuthMode('login')"
                   >
                     登录
                   </button>
                   <button
                     type="button"
                     :class="['portal-tab', { active: authMode === 'register' }]"
-                    @click="authMode = 'register'"
+                    @click="switchAuthMode('register')"
                   >
                     注册
                   </button>
@@ -172,8 +172,11 @@
                   <template v-if="authMode === 'register'">
                     <a-form-item
                       label="学工号"
-                      name="registerUid"
-                      :rules="[{ required: true, message: '请输入学工号' }]"
+                      name="uid"
+                      :rules="[
+                        { required: true, message: '请输入学工号' },
+                        { pattern: /^\d{1,12}$/, message: '学工号必须为不超过12位数字' }
+                      ]"
                     >
                       <a-input
                         v-model:value="registerForm.uid"
@@ -182,7 +185,7 @@
                       />
                     </a-form-item>
 
-                    <a-form-item label="姓名" name="registerUsername">
+                    <a-form-item label="姓名" name="username">
                       <a-input v-model:value="registerForm.username" placeholder="可选，默认使用学工号" />
                     </a-form-item>
 
@@ -243,6 +246,10 @@
                     </div>
                   </a-form-item>
 
+                  <div v-if="errorMessage" class="error-message error-message-inline">
+                    {{ errorMessage }}
+                  </div>
+
                   <a-form-item>
                     <a-button
                       type="primary"
@@ -287,9 +294,6 @@
               </div>
 
               <!-- 错误提示 -->
-              <div v-if="errorMessage" class="error-message">
-                {{ errorMessage }}
-              </div>
             </div>
           </div>
         </div>
@@ -408,6 +412,11 @@ const activePassword = computed({
     loginForm.password = value
   }
 })
+
+const switchAuthMode = (nextMode) => {
+  authMode.value = nextMode
+  errorMessage.value = ''
+}
 
 // 管理员初始化表单
 const adminForm = reactive({
@@ -1044,6 +1053,11 @@ onUnmounted(() => {
   color: var(--color-error-700);
   font-size: 13px;
   text-align: center;
+}
+
+.error-message-inline {
+  margin-top: 0;
+  margin-bottom: 12px;
 }
 
 /* Page Footer */

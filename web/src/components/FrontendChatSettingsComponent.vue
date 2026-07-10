@@ -2,19 +2,39 @@
   <div class="frontend-chat-settings">
     <div class="header-section">
       <div class="header-content">
-        <div class="section-title">前台配置</div>
-        <p class="section-description">配置前台问答门户的可用智能体、展示文案和输入区能力。</p>
+        <div class="section-title">前端配置</div>
+        <p class="section-description">配置前端品牌展示、前台问答门户的可用智能体和输入区能力。</p>
       </div>
       <a-button type="primary" :loading="saving" @click="saveConfig">保存配置</a-button>
     </div>
 
     <a-spin :spinning="loading">
       <div class="settings-form-grid">
-        <a-card size="small" title="展示内容" :bordered="true">
+        <a-card size="small" title="品牌展示" :bordered="true">
           <a-form layout="vertical">
+            <a-form-item label="组织名称">
+              <a-input v-model:value="config.organization_name" placeholder="江南语析" />
+            </a-form-item>
+            <a-form-item label="侧边栏头像">
+              <a-input v-model:value="config.organization_avatar" placeholder="/avatar.jpg" />
+            </a-form-item>
+            <a-form-item label="登录页 Logo">
+              <a-input v-model:value="config.organization_logo" placeholder="/favicon.svg" />
+            </a-form-item>
+            <a-form-item label="登录页背景">
+              <a-input v-model:value="config.login_bg" placeholder="/login-bg.jpg" />
+            </a-form-item>
+            <a-form-item label="浏览器标题">
+              <a-input v-model:value="config.browser_title" placeholder="语析 - Knowledge Management" />
+            </a-form-item>
             <a-form-item label="系统名称">
               <a-input v-model:value="config.system_name" placeholder="智能AI对话系统" />
             </a-form-item>
+          </a-form>
+        </a-card>
+
+        <a-card size="small" title="前台展示" :bordered="true">
+          <a-form layout="vertical">
             <a-form-item label="输入框标题">
               <a-radio-group v-model:value="config.welcome_title_mode">
                 <a-radio-button value="dynamic">动态问候语</a-radio-button>
@@ -85,8 +105,14 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { frontendChatConfigApi } from '@/apis/system_api'
+import { useInfoStore } from '@/stores/info'
 
 const DEFAULT_CONFIG = {
+  organization_name: '江南语析',
+  organization_avatar: '/avatar.jpg',
+  organization_logo: '/favicon.svg',
+  login_bg: '/login-bg.jpg',
+  browser_title: '语析 - Knowledge Management',
   system_name: '智能AI对话系统',
   welcome_title_mode: 'dynamic',
   welcome_title: '智能AI对话系统',
@@ -118,6 +144,7 @@ const inputSwitches = [
 const loading = ref(false)
 const saving = ref(false)
 const config = reactive({ ...DEFAULT_CONFIG })
+const infoStore = useInfoStore()
 
 const agentOptions = computed(() =>
   (config.agent_options || []).map((agent) => ({
@@ -144,7 +171,7 @@ const loadConfig = async () => {
     const response = await frontendChatConfigApi.getConfig()
     applyConfig(response.data)
   } catch (error) {
-    message.error(error.message || '前台配置加载失败')
+    message.error(error.message || '前端配置加载失败')
   } finally {
     loading.value = false
   }
@@ -157,9 +184,10 @@ const saveConfig = async () => {
     delete payload.agent_options
     const response = await frontendChatConfigApi.updateConfig(payload)
     applyConfig(response.data)
-    message.success('前台配置已保存')
+    await infoStore.loadInfoConfig(true)
+    message.success('前端配置已保存')
   } catch (error) {
-    message.error(error.message || '前台配置保存失败')
+    message.error(error.message || '前端配置保存失败')
   } finally {
     saving.value = false
   }

@@ -99,6 +99,23 @@ const router = createRouter({
       redirect: '/back/dashboard'
     },
     {
+      path: '/conversations',
+      redirect: '/back/conversations'
+    },
+    {
+      path: '/back/conversations',
+      name: 'conversations',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'ConversationDataComp',
+          component: () => import('../views/ConversationDataView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresSuperAdmin: true }
+        }
+      ]
+    },
+    {
       path: '/back/dashboard',
       name: 'dashboard',
       component: AppLayout,

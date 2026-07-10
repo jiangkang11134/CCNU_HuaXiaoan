@@ -19,6 +19,11 @@ from yuxi.storage.postgres.models_business import Agent, SystemKV, User
 FRONTEND_BUSINESS_ROLES = {"student", "faculty"}
 FRONTEND_CHAT_CONFIG_KEY = "frontend_chat_config"
 FRONTEND_CHAT_CONFIG_DEFAULT = {
+    "organization_name": "江南语析",
+    "organization_avatar": "/avatar.jpg",
+    "organization_logo": "/favicon.svg",
+    "login_bg": "/login-bg.jpg",
+    "browser_title": "语析 - Knowledge Management",
     "system_name": "智能AI对话系统",
     "welcome_title_mode": "dynamic",
     "welcome_title": "智能AI对话系统",
@@ -50,6 +55,11 @@ BOOLEAN_CONFIG_KEYS = {
     "show_reference_documents",
 }
 STRING_CONFIG_KEYS = {
+    "organization_name",
+    "organization_avatar",
+    "organization_logo",
+    "login_bg",
+    "browser_title",
     "system_name",
     "welcome_title_mode",
     "welcome_title",

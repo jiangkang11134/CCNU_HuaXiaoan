@@ -201,11 +201,31 @@ async def load_info_config():
 
 
 @system.get("/info")
-async def get_info_config():
+async def get_info_config(db: AsyncSession = Depends(get_db)):
     """获取系统信息配置（公开接口，无需认证）"""
     try:
-        config = await load_info_config()
-        return {"success": True, "data": config}
+        info_config = await load_info_config()
+        frontend_config = await load_frontend_chat_config(db)
+
+        organization = {
+            **(info_config.get("organization") or {}),
+            "name": frontend_config["organization_name"],
+            "logo": frontend_config["organization_logo"],
+            "avatar": frontend_config["organization_avatar"],
+            "login_bg": frontend_config["login_bg"],
+        }
+        branding = {
+            **(info_config.get("branding") or {}),
+            "name": frontend_config["system_name"],
+            "title": frontend_config["browser_title"],
+        }
+        merged_config = {
+            **info_config,
+            "organization": organization,
+            "branding": branding,
+            "frontend": frontend_config,
+        }
+        return {"success": True, "data": merged_config}
     except Exception as e:
         logger.error(f"获取信息配置失败: {e}")
         raise HTTPException(status_code=500, detail="获取信息配置失败")

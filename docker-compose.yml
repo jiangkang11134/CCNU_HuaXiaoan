@@ -179,26 +179,15 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-      target: development
+      target: production
     image: yuxi-web:${YUXI_VERSION:-0.7.1.beta1}
     container_name: web-dev
-    volumes:
-      - ./web/src:/app/src
-      - ./web/public:/app/public
-      - ./web/index.html:/app/index.html
-      - ./web/vite.config.js:/app/vite.config.js
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - api
     networks:
       - app-network
-    environment:
-      - NODE_ENV=development
-      - VITE_API_URL=http://api:5050
-      - VITE_USE_RUNS_API=${VITE_USE_RUNS_API:-false}
-      - VITE_LITE_MODE=${LITE_MODE:-}
-    command: pnpm run server
     restart: unless-stopped
 
   # region neo4j
@@ -206,8 +195,8 @@ services:
     image: neo4j:5.26
     container_name: graph
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "7475:7474"
+      - "7688:7687"
     volumes:
       - ./docker/volumes/neo4j/data:/data
       - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
@@ -265,8 +254,8 @@ services:
       retries: 5
       start_period: 30s
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "9002:9000"
+      - "9003:9001"
     networks:
       - app-network
     restart: unless-stopped

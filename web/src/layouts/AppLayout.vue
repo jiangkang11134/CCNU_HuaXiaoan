@@ -81,7 +81,9 @@ const getRemoteDatabase = async () => {
 onMounted(async () => {
   // 加载信息配置与知识库数据无依赖，可并行
   await Promise.all([infoStore.loadInfoConfig(), getRemoteDatabase()])
-  await initAgentNavigation()
+  if (showConversationNavigation.value) {
+    await initAgentNavigation()
+  }
   await getRemoteConfig()
   // 仅管理员加载任务中心数据
   if (userStore.isAdmin) {
@@ -96,24 +98,26 @@ const activeTaskCount = computed(() => activeCountRef.value || 0)
 const activeConversationThreadId = computed(() => {
   return route.path.startsWith('/front/agent') ? currentThreadId.value : null
 })
+const showConversationNavigation = computed(
+  () => !userStore.isAdmin && route.path.startsWith('/front/agent')
+)
 const organizationName = computed(() => {
   return infoStore.organization.name || infoStore.branding.name || 'Yuxi'
 })
 
 // 下面是导航菜单部分，添加智能体项
 const mainList = computed(() => {
-  const items = [
-    {
+  const items = []
+
+  if (!userStore.isAdmin) {
+    items.push({
       name: '创建新对话',
       path: '/front/agent',
       icon: MessageCirclePlus,
       activeIcon: MessageCirclePlus,
       action: true,
       exactActive: true
-    }
-  ]
-
-  if (!userStore.isAdmin) {
+    })
     return items
   }
 
@@ -138,6 +142,15 @@ const mainList = computed(() => {
     icon: Box,
     activeIcon: Box
   })
+
+  if (userStore.isSuperAdmin) {
+    items.push({
+      name: '对话数据',
+      path: '/back/conversations',
+      icon: BarChart3,
+      activeIcon: BarChart3
+    })
+  }
 
   if (userStore.isSuperAdmin) {
     items.push({
@@ -171,6 +184,7 @@ const toggleSidebar = () => {
 }
 
 const openConversationSearch = () => {
+  if (!showConversationNavigation.value) return
   conversationSearchOpen.value = true
 }
 
@@ -250,6 +264,14 @@ watch(
   { immediate: true }
 )
 
+watch(showConversationNavigation, async (shouldShow) => {
+  if (shouldShow) {
+    await initAgentNavigation()
+    return
+  }
+  conversationSearchOpen.value = false
+})
+
 // Provide settings modal methods to child components
 provide('settingsModal', {
   openSettingsModal
@@ -307,6 +329,7 @@ provide('settingsModal', {
         </RouterLink>
 
         <button
+          v-if="showConversationNavigation"
           type="button"
           class="nav-item"
           :class="{ active: conversationSearchOpen }"
@@ -342,7 +365,7 @@ provide('settingsModal', {
       </div>
       <div class="fill">
         <ConversationNavSection
-          v-if="!sidebarCollapsed"
+          v-if="!sidebarCollapsed && showConversationNavigation"
           class="sidebar-conversations"
           :current-chat-id="activeConversationThreadId"
           :chats-list="threads"
@@ -391,6 +414,7 @@ provide('settingsModal', {
     </router-view>
 
     <ConversationSearchModal
+      v-if="showConversationNavigation"
       v-model:open="conversationSearchOpen"
       :recent-threads="threads"
       @select-thread="handleSearchSelectThread"

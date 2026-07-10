@@ -7,10 +7,8 @@ import {
   Trash2,
   SquarePen,
   Bot,
-  MoreVertical,
-  MessageCirclePlus
+  MoreVertical
 } from 'lucide-vue-next'
-import { useRouter } from 'vue-router'
 
 import { agentApi } from '@/apis/agent_api'
 import AgentEditModal from '@/components/model-management/AgentEditModal.vue'
@@ -22,7 +20,6 @@ import ExtensionCardGrid from '@/components/extensions/ExtensionCardGrid.vue'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 
 const agentStore = useAgentStore()
-const router = useRouter()
 const agentLoading = ref(false)
 const searchQuery = ref('')
 
@@ -111,11 +108,6 @@ const openCreateAgentModal = () => {
 const openEditAgentModal = (agent) => {
   if (!canManageAgent(agent)) return
   agentEditModalRef.value?.openEdit(agent)
-}
-
-const openAgentChat = (agent) => {
-  if (!agent?.id || agent.is_subagent) return
-  router.push({ name: 'AgentComp', query: { agent_id: agent.id } })
 }
 
 const refreshAgentLists = async () => {
@@ -242,19 +234,6 @@ defineExpose({
               </a-dropdown>
             </template>
 
-            <template v-if="group.key === 'agents'" #tags>
-              <div class="agent-card-actions">
-                <a-button
-                  type="primary"
-                  size="small"
-                  class="lucide-icon-btn agent-chat-entry"
-                  @click.stop="openAgentChat(agent)"
-                >
-                  <MessageCirclePlus :size="14" />
-                  去对话
-                </a-button>
-              </div>
-            </template>
           </InfoCard>
         </ExtensionCardGrid>
       </section>
