@@ -1,0 +1,212 @@
+<template>
+  <div class="frontend-chat-settings">
+    <div class="header-section">
+      <div class="header-content">
+        <div class="section-title">前台配置</div>
+        <p class="section-description">配置前台问答门户的可用智能体、展示文案和输入区能力。</p>
+      </div>
+      <a-button type="primary" :loading="saving" @click="saveConfig">保存配置</a-button>
+    </div>
+
+    <a-spin :spinning="loading">
+      <div class="settings-form-grid">
+        <a-card size="small" title="展示内容" :bordered="true">
+          <a-form layout="vertical">
+            <a-form-item label="系统名称">
+              <a-input v-model:value="config.system_name" placeholder="智能AI对话系统" />
+            </a-form-item>
+            <a-form-item label="输入框标题">
+              <a-radio-group v-model:value="config.welcome_title_mode">
+                <a-radio-button value="dynamic">动态问候语</a-radio-button>
+                <a-radio-button value="custom">自定义文字</a-radio-button>
+              </a-radio-group>
+              <a-input
+                v-if="config.welcome_title_mode === 'custom'"
+                v-model:value="config.welcome_title"
+                class="field-gap"
+                placeholder="请输入自定义标题"
+              />
+            </a-form-item>
+            <a-form-item label="输入框提示内容">
+              <a-input v-model:value="config.frontend_input_placeholder" />
+            </a-form-item>
+          </a-form>
+        </a-card>
+
+        <a-card size="small" title="前台智能体" :bordered="true">
+          <a-form layout="vertical">
+            <a-form-item label="候选智能体">
+              <a-select
+                v-model:value="config.selectable_agent_ids"
+                mode="multiple"
+                allow-clear
+                :options="agentOptions"
+                placeholder="请选择前台可用智能体"
+              />
+            </a-form-item>
+            <a-form-item label="默认智能体">
+              <a-select
+                v-model:value="config.default_agent_id"
+                allow-clear
+                :options="defaultAgentOptions"
+                placeholder="请选择默认智能体"
+              />
+            </a-form-item>
+          </a-form>
+        </a-card>
+
+        <a-card size="small" title="输入区能力" :bordered="true">
+          <div class="switch-grid">
+            <label v-for="item in inputSwitches" :key="item.key" class="switch-row">
+              <span>{{ item.label }}</span>
+              <a-switch v-model:checked="config[item.key]" />
+            </label>
+          </div>
+        </a-card>
+
+        <a-card size="small" title="回答展示" :bordered="true">
+          <div class="switch-grid">
+            <label class="switch-row">
+              <span>思考过程</span>
+              <a-switch v-model:checked="config.show_thought_process" />
+            </label>
+            <label class="switch-row">
+              <span>引用文档</span>
+              <a-switch v-model:checked="config.show_reference_documents" />
+            </label>
+          </div>
+        </a-card>
+      </div>
+    </a-spin>
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { frontendChatConfigApi } from '@/apis/system_api'
+
+const DEFAULT_CONFIG = {
+  system_name: '智能AI对话系统',
+  welcome_title_mode: 'dynamic',
+  welcome_title: '智能AI对话系统',
+  frontend_input_placeholder: '基于知识库的 RAG 问答，快速准确地回答问题',
+  default_agent_id: '',
+  selectable_agent_ids: [],
+  show_agent_selector: true,
+  show_model_selector: false,
+  show_web_search_toggle: false,
+  show_file_upload: false,
+  show_image_upload: false,
+  show_voice_input: false,
+  show_send_button: true,
+  show_thought_process: true,
+  show_reference_documents: true,
+  agent_options: []
+}
+
+const inputSwitches = [
+  { key: 'show_agent_selector', label: '智能体选择' },
+  { key: 'show_model_selector', label: '模型选择' },
+  { key: 'show_web_search_toggle', label: '联网搜索' },
+  { key: 'show_file_upload', label: '文件上传' },
+  { key: 'show_image_upload', label: '图片上传' },
+  { key: 'show_voice_input', label: '语音输入' },
+  { key: 'show_send_button', label: '发送按钮' }
+]
+
+const loading = ref(false)
+const saving = ref(false)
+const config = reactive({ ...DEFAULT_CONFIG })
+
+const agentOptions = computed(() =>
+  (config.agent_options || []).map((agent) => ({
+    label: agent.name || agent.id,
+    value: agent.id
+  }))
+)
+
+const defaultAgentOptions = computed(() => {
+  const selectedIds = new Set(config.selectable_agent_ids || [])
+  return agentOptions.value.filter((agent) => selectedIds.has(agent.value))
+})
+
+const applyConfig = (data) => {
+  Object.assign(config, { ...DEFAULT_CONFIG, ...(data || {}) })
+  config.selectable_agent_ids = Array.isArray(config.selectable_agent_ids)
+    ? [...new Set(config.selectable_agent_ids.filter(Boolean))]
+    : []
+}
+
+const loadConfig = async () => {
+  loading.value = true
+  try {
+    const response = await frontendChatConfigApi.getConfig()
+    applyConfig(response.data)
+  } catch (error) {
+    message.error(error.message || '前台配置加载失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const saveConfig = async () => {
+  saving.value = true
+  try {
+    const payload = { ...config }
+    delete payload.agent_options
+    const response = await frontendChatConfigApi.updateConfig(payload)
+    applyConfig(response.data)
+    message.success('前台配置已保存')
+  } catch (error) {
+    message.error(error.message || '前台配置保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+watch(
+  () => config.selectable_agent_ids,
+  (ids) => {
+    if (config.default_agent_id && !(ids || []).includes(config.default_agent_id)) {
+      config.default_agent_id = ''
+    }
+  },
+  { deep: true }
+)
+
+onMounted(loadConfig)
+</script>
+
+<style lang="less" scoped>
+.frontend-chat-settings {
+  .settings-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+
+    @media (max-width: 760px) {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .field-gap {
+    margin-top: 10px;
+  }
+
+  .switch-grid {
+    display: grid;
+    gap: 12px;
+  }
+
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 32px;
+    color: var(--gray-800);
+    font-size: 14px;
+  }
+}
+</style>
