@@ -36,9 +36,9 @@ def _env_list(name: str) -> list[str]:
 
 
 def _get_available_ocr_engines() -> set[str]:
-    from yuxi.knowledge.parser.factory import DocumentProcessorFactory
+    from yuxi.config.ocr import get_available_processor_types
 
-    return {"disable", *DocumentProcessorFactory.get_available_processors()}
+    return {"disable", *get_available_processor_types()}
 
 
 def _normalize_default_ocr_engine(value: Any) -> str:

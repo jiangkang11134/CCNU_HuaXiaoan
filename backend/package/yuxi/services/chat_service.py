@@ -41,7 +41,7 @@ from yuxi.services.langfuse_service import (
 from yuxi.services.subagent_run_service import serialize_subagent_run_state
 from yuxi.storage.postgres.manager import pg_manager
 from yuxi.storage.postgres.models_business import Agent, User
-from yuxi.utils.guard import content_guard
+from yuxi.utils.guard import ContentGuardConfigurationError, content_guard
 from yuxi.utils.logging_config import logger
 from yuxi.utils.question_utils import (
     normalize_questions as _normalize_interrupt_questions,
@@ -806,11 +806,22 @@ async def stream_agent_chat(
     human_message = input_message.require_langchain_message()
     message_type = input_message.message_type
 
-    if conf.enable_content_guard and await content_guard.check(query):
-        yield make_chunk(
-            status="error", error_type="content_guard_blocked", error_message="输入内容包含敏感词", meta=meta
-        )
-        return
+    if conf.enable_content_guard:
+        try:
+            is_blocked = await content_guard.check(query)
+        except ContentGuardConfigurationError as exc:
+            yield make_chunk(
+                status="error",
+                error_type="content_guard_configuration_error",
+                error_message=str(exc),
+                meta=meta,
+            )
+            return
+        if is_blocked:
+            yield make_chunk(
+                status="error", error_type="content_guard_blocked", error_message="输入内容包含敏感词", meta=meta
+            )
+            return
 
     try:
         agent_item, agent, agent_config = await _resolve_agent_runtime(
@@ -996,19 +1007,30 @@ async def stream_agent_chat(
         full_msg = _ensure_full_msg(full_msg, accumulated_content)
         trace_info = get_trace_info(langfuse_run)
 
-        if conf.enable_content_guard and hasattr(full_msg, "content") and await content_guard.check(full_msg.content):
-            await save_partial_message(
-                conv_repo,
-                thread_id,
-                full_msg,
-                "content_guard_blocked",
-                trace_info=trace_info,
-                run_id=meta.get("run_id"),
-                request_id=meta.get("request_id"),
-            )
-            meta["time_cost"] = asyncio.get_event_loop().time() - start_time
-            yield make_chunk(status="interrupted", message="检测到敏感内容，已中断输出", meta=meta)
-            return
+        if conf.enable_content_guard and hasattr(full_msg, "content"):
+            try:
+                is_blocked = await content_guard.check(full_msg.content)
+            except ContentGuardConfigurationError as exc:
+                yield make_chunk(
+                    status="error",
+                    error_type="content_guard_configuration_error",
+                    error_message=str(exc),
+                    meta=meta,
+                )
+                return
+            if is_blocked:
+                await save_partial_message(
+                    conv_repo,
+                    thread_id,
+                    full_msg,
+                    "content_guard_blocked",
+                    trace_info=trace_info,
+                    run_id=meta.get("run_id"),
+                    request_id=meta.get("request_id"),
+                )
+                meta["time_cost"] = asyncio.get_event_loop().time() - start_time
+                yield make_chunk(status="interrupted", message="检测到敏感内容，已中断输出", meta=meta)
+                return
 
         interrupted = False
         async for chunk in check_and_handle_interrupts(agent, langgraph_config, make_chunk, meta, thread_id, context):
