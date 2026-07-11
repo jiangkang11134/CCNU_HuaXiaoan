@@ -1,8 +1,10 @@
 import asyncio
 import os
+import tempfile
 import textwrap
 import time
 import traceback
+from pathlib import Path
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
@@ -31,10 +33,10 @@ from yuxi.knowledge.utils.sample_question_utils import (
 from yuxi.knowledge.utils.url_fetcher import fetch_url_content
 from yuxi.models.providers.cache import model_cache
 from yuxi.services.task_service import TaskContext, tasker
-from yuxi.storage.minio.client import MinIOClient, StorageError, aupload_file_to_minio, get_minio_client
+from yuxi.storage.minio.client import MinIOClient, StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
-from yuxi.utils.upload_utils import MAX_UPLOAD_SIZE_BYTES, read_upload_with_limit, write_upload_to_path
+from yuxi.utils.upload_utils import MAX_UPLOAD_SIZE_BYTES, calculate_file_sha256, write_upload_to_path
 
 from server.utils.auth_middleware import get_admin_user, get_required_user
 
@@ -1849,37 +1851,57 @@ async def upload_file(
     # 直接使用原始文件名（小写）
     filename = f"{basename}{ext}".lower()
 
+    temp_path = None
     try:
-        file_bytes = await read_upload_with_limit(
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+            temp_path = Path(temp_file.name)
+
+        file_size = await write_upload_to_path(
             file,
+            temp_path,
             max_size_bytes=MAX_UPLOAD_SIZE_BYTES,
             too_large_message="文件过大，当前仅支持 100 MB 以内的文件",
         )
+
+        content_hash = await calculate_file_sha256(temp_path)
+
+        file_exists = await knowledge_base.file_existed_in_db(kb_id, content_hash)
+        if file_exists:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "duplicate_content",
+                    "message": "数据库中已经存在了相同内容文件",
+                },
+            )
+
+        # 直接上传到MinIO，添加时间戳区分版本
+        timestamp = int(time.time() * 1000)
+        minio_filename = f"{basename}_{timestamp}{ext}"
+
+        bucket_name = MinIOClient.KB_BUCKETS["documents"]
+        folder = kb_id if kb_id else "unknown"
+        object_name = f"{folder}/upload/{minio_filename}"
+
+        minio_client = get_minio_client()
+        upload_result = await minio_client.aupload_file_from_path(
+            bucket_name=bucket_name,
+            object_name=object_name,
+            file_path=str(temp_path),
+            content_type=file.content_type,
+        )
+        minio_url = upload_result.url
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    content_hash = await calculate_content_hash(file_bytes)
-
-    file_exists = await knowledge_base.file_existed_in_db(kb_id, content_hash)
-    if file_exists:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "duplicate_content",
-                "message": "数据库中已经存在了相同内容文件",
-            },
-        )
-
-    # 直接上传到MinIO，添加时间戳区分版本
-    timestamp = int(time.time() * 1000)
-    minio_filename = f"{basename}_{timestamp}{ext}"
-
-    bucket_name = MinIOClient.KB_BUCKETS["documents"]
-    folder = kb_id if kb_id else "unknown"
-    object_name = f"{folder}/upload/{minio_filename}"
-
-    # 上传到MinIO
-    minio_url = await aupload_file_to_minio(bucket_name, object_name, file_bytes)
+    except StorageError as e:
+        logger.error(f"上传文件到对象存储失败 {file.filename}: {e}")
+        raise HTTPException(status_code=500, detail=f"上传文件到对象存储失败: {e}")
+    finally:
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError as cleanup_error:
+                logger.warning(f"临时上传文件清理失败 {temp_path}: {cleanup_error}")
 
     # 检测同名文件（基于原始文件名）
     same_name_files = await knowledge_base.get_same_name_files(kb_id, filename)
@@ -1893,7 +1915,7 @@ async def upload_file(
         "content_hash": content_hash,
         "filename": filename,  # 原始文件名（小写）
         "original_filename": basename,  # 原始文件名（去掉后缀）
-        "size": len(file_bytes),
+        "size": file_size,
         "minio_filename": minio_filename,  # MinIO中的文件名（带时间戳）
         "object_name": object_name,
         "bucket_name": bucket_name,  # MinIO存储桶名称

@@ -155,27 +155,78 @@ async def test_upload_file_rejects_oversized_file(monkeypatch):
     assert "100 MB" in exc_info.value.detail
 
 
-async def test_upload_file_invalid_kb_fails_before_read_or_minio(monkeypatch):
-    calls = {"read": 0, "upload": 0}
+async def test_upload_file_pdf_uses_file_path_upload(monkeypatch):
+    captured = {}
+    pdf_bytes = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
 
     async def fake_ensure_database_supports_documents(kb_id: str, operation: str) -> None:
-        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+        captured["ensure"] = (kb_id, operation)
 
-    async def fake_read_upload_with_limit(*_args, **_kwargs) -> bytes:
-        calls["read"] += 1
-        return b"demo"
+    async def fake_file_existed_in_db(kb_id: str, content_hash: str) -> bool:
+        captured["exists"] = (kb_id, content_hash)
+        return False
 
-    async def fake_upload_to_minio(*_args, **_kwargs) -> str:
-        calls["upload"] += 1
-        return "minio://knowledgebases/kb_1/upload/demo.txt"
+    async def fake_get_same_name_files(kb_id: str, filename: str) -> list:
+        captured["same_name"] = (kb_id, filename)
+        return []
+
+    class FakeMinioClient:
+        async def aupload_file_from_path(self, *, bucket_name, object_name, file_path, content_type=None):
+            captured["upload"] = {
+                "bucket_name": bucket_name,
+                "object_name": object_name,
+                "content": open(file_path, "rb").read(),
+                "content_type": content_type,
+            }
+            return SimpleNamespace(url=f"http://localhost:9000/{bucket_name}/{object_name}")
 
     monkeypatch.setattr(
         knowledge_router,
         "_ensure_database_supports_documents",
         fake_ensure_database_supports_documents,
     )
-    monkeypatch.setattr(knowledge_router, "read_upload_with_limit", fake_read_upload_with_limit)
-    monkeypatch.setattr(knowledge_router, "aupload_file_to_minio", fake_upload_to_minio)
+    monkeypatch.setattr(knowledge_router.knowledge_base, "file_existed_in_db", fake_file_existed_in_db)
+    monkeypatch.setattr(knowledge_router.knowledge_base, "get_same_name_files", fake_get_same_name_files)
+    monkeypatch.setattr(knowledge_router, "get_minio_client", lambda: FakeMinioClient())
+
+    upload = UploadFile(filename="实验室安全.pdf", file=BytesIO(pdf_bytes), headers={"content-type": "application/pdf"})
+
+    result = await knowledge_router.upload_file(upload, kb_id="kb_1", current_user=SimpleNamespace(uid="user_1"))
+
+    assert result["message"] == "File successfully uploaded"
+    assert result["size"] == len(pdf_bytes)
+    assert result["filename"] == "实验室安全.pdf"
+    assert result["bucket_name"] == "knowledgebases"
+    assert result["object_name"].startswith("kb_1/upload/实验室安全_")
+    assert captured["ensure"] == ("kb_1", "文档上传")
+    assert captured["same_name"] == ("kb_1", "实验室安全.pdf")
+    assert captured["upload"]["content"] == pdf_bytes
+    assert captured["upload"]["content_type"] == "application/pdf"
+    assert captured["exists"] == ("kb_1", result["content_hash"])
+
+
+async def test_upload_file_invalid_kb_fails_before_write_or_minio(monkeypatch):
+    calls = {"write": 0, "upload": 0}
+
+    async def fake_ensure_database_supports_documents(kb_id: str, operation: str) -> None:
+        raise HTTPException(status_code=404, detail=f"知识库 {kb_id} 不存在")
+
+    async def fake_write_upload_to_path(*_args, **_kwargs) -> int:
+        calls["write"] += 1
+        return 4
+
+    class FakeMinioClient:
+        async def aupload_file_from_path(self, **_kwargs):
+            calls["upload"] += 1
+            return SimpleNamespace(url="minio://knowledgebases/kb_1/upload/demo.txt")
+
+    monkeypatch.setattr(
+        knowledge_router,
+        "_ensure_database_supports_documents",
+        fake_ensure_database_supports_documents,
+    )
+    monkeypatch.setattr(knowledge_router, "write_upload_to_path", fake_write_upload_to_path)
+    monkeypatch.setattr(knowledge_router, "get_minio_client", lambda: FakeMinioClient())
 
     upload = UploadFile(filename="demo.txt", file=BytesIO(b"demo"))
 
@@ -183,30 +234,31 @@ async def test_upload_file_invalid_kb_fails_before_read_or_minio(monkeypatch):
         await knowledge_router.upload_file(upload, kb_id="missing", current_user=SimpleNamespace(uid="user_1"))
 
     assert exc_info.value.status_code == 404
-    assert calls == {"read": 0, "upload": 0}
+    assert calls == {"write": 0, "upload": 0}
 
 
-async def test_upload_file_read_only_kb_fails_before_read_or_minio(monkeypatch):
-    calls = {"read": 0, "upload": 0}
+async def test_upload_file_read_only_kb_fails_before_write_or_minio(monkeypatch):
+    calls = {"write": 0, "upload": 0}
 
     async def fake_ensure_database_supports_documents(kb_id: str, operation: str) -> None:
         raise HTTPException(status_code=400, detail="只支持检索，不支持文档上传")
 
-    async def fake_read_upload_with_limit(*_args, **_kwargs) -> bytes:
-        calls["read"] += 1
-        return b"demo"
+    async def fake_write_upload_to_path(*_args, **_kwargs) -> int:
+        calls["write"] += 1
+        return 4
 
-    async def fake_upload_to_minio(*_args, **_kwargs) -> str:
-        calls["upload"] += 1
-        return "minio://knowledgebases/kb_1/upload/demo.txt"
+    class FakeMinioClient:
+        async def aupload_file_from_path(self, **_kwargs):
+            calls["upload"] += 1
+            return SimpleNamespace(url="minio://knowledgebases/kb_1/upload/demo.txt")
 
     monkeypatch.setattr(
         knowledge_router,
         "_ensure_database_supports_documents",
         fake_ensure_database_supports_documents,
     )
-    monkeypatch.setattr(knowledge_router, "read_upload_with_limit", fake_read_upload_with_limit)
-    monkeypatch.setattr(knowledge_router, "aupload_file_to_minio", fake_upload_to_minio)
+    monkeypatch.setattr(knowledge_router, "write_upload_to_path", fake_write_upload_to_path)
+    monkeypatch.setattr(knowledge_router, "get_minio_client", lambda: FakeMinioClient())
 
     upload = UploadFile(filename="demo.txt", file=BytesIO(b"demo"))
 
@@ -214,7 +266,7 @@ async def test_upload_file_read_only_kb_fails_before_read_or_minio(monkeypatch):
         await knowledge_router.upload_file(upload, kb_id="readonly", current_user=SimpleNamespace(uid="user_1"))
 
     assert exc_info.value.status_code == 400
-    assert calls == {"read": 0, "upload": 0}
+    assert calls == {"write": 0, "upload": 0}
 
 
 async def test_markdown_endpoint_rejects_oversized_file(monkeypatch):

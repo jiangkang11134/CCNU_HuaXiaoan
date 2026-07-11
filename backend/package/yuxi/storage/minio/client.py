@@ -145,18 +145,53 @@ class MinIOClient:
         )
         return result
 
-    def upload_file_from_path(self, bucket_name: str, object_name: str, file_path: str) -> UploadResult:
+    def upload_file_from_path(
+        self,
+        bucket_name: str,
+        object_name: str,
+        file_path: str,
+        content_type: str | None = None,
+    ) -> UploadResult:
         """从文件路径上传文件"""
         try:
-            with open(file_path, "rb") as file_data:
-                data = file_data.read()
+            self.ensure_bucket_exists(bucket_name=bucket_name)
+            resolved_content_type = content_type or self._guess_content_type(object_name)
+            result = self.client.fput_object(
+                bucket_name=bucket_name,
+                object_name=object_name,
+                file_path=file_path,
+                content_type=resolved_content_type,
+            )
 
-            return self.upload_file(bucket_name, object_name, data)
+            assert result is not None
+            url = f"http://{self.public_endpoint}/{bucket_name}/{object_name}"
+
+            return UploadResult(url, bucket_name, object_name)
 
         except FileNotFoundError:
             raise StorageError(f"文件 '{file_path}' 不存在")
-        except Exception as e:
+        except S3Error as e:
+            error_msg = f"上传文件 '{object_name}' 失败: {e}"
+            logger.error(error_msg)
+            raise StorageError(error_msg)
+        except OSError as e:
             raise StorageError(f"从路径上传文件失败: {e}")
+
+    async def aupload_file_from_path(
+        self,
+        bucket_name: str,
+        object_name: str,
+        file_path: str,
+        content_type: str | None = None,
+    ) -> UploadResult:
+        result = await asyncio.to_thread(
+            self.upload_file_from_path,
+            bucket_name=bucket_name,
+            object_name=object_name,
+            file_path=file_path,
+            content_type=content_type,
+        )
+        return result
 
     def _guess_content_type(self, object_name: str) -> str:
         """根据文件名猜测 MIME 类型"""

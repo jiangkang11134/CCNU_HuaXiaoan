@@ -1,9 +1,21 @@
+import hashlib
 from pathlib import Path
 
 import aiofiles
 from fastapi import UploadFile
 
 MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
+
+
+async def calculate_file_sha256(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+    """按块读取本地文件并计算 SHA-256 哈希。"""
+    sha256 = hashlib.sha256()
+
+    async with aiofiles.open(path, "rb") as buffer:
+        while chunk := await buffer.read(chunk_size):
+            sha256.update(chunk)
+
+    return sha256.hexdigest()
 
 
 async def write_upload_to_buffer(
