@@ -5,8 +5,7 @@
       <div class="status-left">
         <div class="system-info">
           <div class="system-details">
-            <div class="system-name">{{ branding.name }}</div>
-            <div class="system-subtitle">{{ branding.subtitle }}</div>
+            <div class="system-name">{{ systemTitle }}</div>
           </div>
         </div>
       </div>
@@ -78,7 +77,9 @@ const { activeCount: activeCountRef } = storeToRefs(taskerStore)
 const currentTime = ref('')
 
 // 计算属性
-const branding = computed(() => infoStore.branding)
+const systemTitle = computed(
+  () => infoStore.frontend?.system_name?.trim() || infoStore.branding?.name?.trim() || '实验室安全教育智能对话平台'
+)
 
 // 用户名计算属性
 const currentUser = computed(() => {
@@ -176,12 +177,6 @@ onUnmounted(() => {
     font-weight: 600;
     color: var(--gray-900, #111827);
     line-height: 1.4;
-  }
-
-  .system-subtitle {
-    font-size: 13px;
-    color: var(--gray-600, #6b7280);
-    line-height: 1.2;
   }
 }
 

@@ -37,7 +37,7 @@
 
     <!-- 助手消息 -->
     <div v-else-if="message.type === 'ai'" class="assistant-message">
-      <div v-if="parsedData.reasoning_content" class="reasoning-box">
+      <div v-if="showReasoning && parsedData.reasoning_content" class="reasoning-box">
         <a-collapse v-model:activeKey="reasoningActiveKey" :bordered="false">
           <template #expandIcon="{ isActive }">
             <caret-right-outlined :rotate="isActive ? 90 : 0" />
@@ -61,7 +61,7 @@
         class="message-md"
       />
 
-      <div v-else-if="parsedData.reasoning_content" class="empty-block"></div>
+      <div v-else-if="showReasoning && parsedData.reasoning_content" class="empty-block"></div>
 
       <!-- 错误提示块 -->
       <div v-if="displayError" class="error-hint">
@@ -192,6 +192,10 @@ const props = defineProps({
   hideToolCalls: {
     type: Boolean,
     default: false
+  },
+  showReasoning: {
+    type: Boolean,
+    default: true
   },
   mention: {
     type: Object,

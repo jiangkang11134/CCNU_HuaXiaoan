@@ -78,6 +78,7 @@
                     :message="displayItem.message"
                     :is-processing="isDisplayMessageProcessing(row.conv, displayItem)"
                     :show-refs="showMsgRefs(displayItem.message, row.conv)"
+                    :show-reasoning="shouldShowThoughtProcess"
                     :hide-tool-calls="true"
                     :mention="mentionConfig"
                     @retry="retryMessage(displayItem.message)"
@@ -100,7 +101,7 @@
                 <RefsComponent
                   v-if="shouldShowRefs(row.conv)"
                   :message="getLastMessage(row.conv)"
-                  :show-refs="['model', 'copy', 'sources']"
+                  :show-refs="conversationRefs"
                   :is-latest-message="false"
                   :sources="getConversationSources(row.conv)"
                 />
@@ -662,7 +663,11 @@ const greetingTitle = computed(() => {
 })
 const inputPlaceholder = computed(() => props.frontendConfig?.frontend_input_placeholder || '问点什么？使用 @ 可以提及哦~')
 const shouldShowModelSelector = computed(() => props.frontendConfig?.show_model_selector !== false)
+const shouldShowThoughtProcess = computed(() => props.frontendConfig?.show_thought_process !== false)
 const shouldShowReferences = computed(() => props.frontendConfig?.show_reference_documents !== false)
+const conversationRefs = computed(() =>
+  shouldShowReferences.value ? ['model', 'copy', 'sources'] : ['model', 'copy']
+)
 const shouldShowSendButton = computed(() => props.frontendConfig?.show_send_button !== false)
 
 // 业务状态（保留在组件本地）
