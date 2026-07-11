@@ -147,7 +147,10 @@ async def update_config_single(key=Body(...), value=Body(...), current_user: Use
         config.set_value(key, value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    config.save()
+    try:
+        config.save()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return _dump_public_config()
 
 
@@ -158,7 +161,10 @@ async def update_config_batch(items: dict = Body(...), current_user: User = Depe
         config.update(_remove_empty_sensitive_config_values(items))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    config.save()
+    try:
+        config.save()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     return _dump_public_config()
 
 

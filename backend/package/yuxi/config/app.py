@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import tomli
 import tomli_w
@@ -46,6 +47,24 @@ def _normalize_default_ocr_engine(value: Any) -> str:
     if engine not in _get_available_ocr_engines():
         raise ValueError(f"不支持的默认 OCR 引擎: {engine}")
     return engine
+
+
+def _normalize_mineru_api_uri(value: Any) -> str:
+    uri = str(value or "").strip().rstrip("/")
+    if not uri:
+        raise ValueError("MinerU 官方 API 基础地址不能为空")
+
+    parsed = urlparse(uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("MinerU 官方 API 基础地址必须是完整的 http(s) 地址")
+    if parsed.params or parsed.query or parsed.fragment:
+        raise ValueError("MinerU 官方 API 基础地址不能包含参数、查询字符串或片段")
+
+    normalized_path = parsed.path.rstrip("/")
+    if normalized_path not in {"", "/api/v4"}:
+        raise ValueError("MinerU 官方 API 地址应填写基础地址，例如 https://mineru.net/api/v4，不要填写具体任务接口")
+
+    return urlunparse((parsed.scheme, parsed.netloc, normalized_path, "", "", ""))
 
 
 class Config(BaseModel):
@@ -221,6 +240,7 @@ class Config(BaseModel):
             runtime_cache.save_runtime_config(self)
         except Exception as e:
             logger.error(f"Failed to save config to {self._config_file}: {e}")
+            raise RuntimeError(f"配置文件保存失败: {e}") from e
 
     def dump_config(self) -> dict[str, Any]:
         config_dict = self.model_dump()
@@ -275,10 +295,11 @@ class Config(BaseModel):
             if normalized <= 0:
                 raise ValueError(f"{key} must be greater than 0")
             return normalized
+        if key == "mineru_api_uri":
+            return _normalize_mineru_api_uri(value)
         if key in {
             "tavily_api_key",
             "mineru_api_key",
-            "mineru_api_uri",
             "paddleocr_api_token",
             "paddleocr_api_url",
             "deepseek_ocr_api_key",

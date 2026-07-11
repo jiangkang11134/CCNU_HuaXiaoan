@@ -113,7 +113,7 @@
               </div>
             </div>
             <div class="col-item">
-              <div class="setting-label">MinerU 官方 API 地址</div>
+              <div class="setting-label">MinerU 官方 API 基础地址</div>
               <div class="setting-content">
                 <a-input
                   :value="configStore.config?.mineru_api_uri"
@@ -259,11 +259,21 @@ const ocrEngineOptions = [
 ]
 
 const handleChange = async (key, e) => {
-  await configStore.setConfigValue(key, e)
+  try {
+    await configStore.setConfigValue(key, e)
+    message.success('配置已保存')
+  } catch (error) {
+    message.error(error.message || '配置保存失败')
+  }
 }
 
 const handleTextChange = async (key, value) => {
-  await configStore.setConfigValue(key, value)
+  try {
+    await configStore.setConfigValue(key, value)
+    message.success('配置已保存')
+  } catch (error) {
+    message.error(error.message || '配置保存失败')
+  }
 }
 
 const handleUrlWhitelistChange = (event) => {
@@ -272,7 +282,7 @@ const handleUrlWhitelistChange = (event) => {
     .split(/[\n,]/)
     .map((item) => item.trim())
     .filter(Boolean)
-  configStore.setConfigValue('url_whitelist', domains)
+  handleChange('url_whitelist', domains)
 }
 
 const setSecretDraft = (key, value) => {
