@@ -42,15 +42,6 @@
               themeStore.isDark ? '切换到浅色模式' : '切换到深色模式 (Beta)'
             }}</span>
           </a-menu-item>
-          <a-menu-divider v-if="userStore.isAdmin" />
-          <a-menu-item v-if="userStore.isAdmin" key="debug" @click="showDebug = true">
-            <template #icon><Terminal :size="16" /></template>
-            <span class="menu-text">调试面板（非生产环境）</span>
-          </a-menu-item>
-          <a-menu-item v-if="userStore.isAdmin" key="setting" @click="goToSetting">
-            <template #icon><Settings :size="16" /></template>
-            <span class="menu-text">系统设置</span>
-          </a-menu-item>
           <a-menu-item key="logout" @click="logout">
             <template #icon><LogOut :size="16" /></template>
             <span class="menu-text">退出登录</span>
@@ -59,19 +50,15 @@
       </template>
     </a-dropdown>
     <a-button v-else-if="showButton" type="primary" @click="goToLogin"> 登录 </a-button>
-
-    <!-- 调试面板 Modal -->
-    <DebugComponent v-model:show="showDebug" />
   </div>
 </template>
 
 <script setup>
-import { computed, ref, inject, useSlots } from 'vue'
+import { computed, useSlots } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import DebugComponent from '@/components/DebugComponent.vue'
 import { message } from 'ant-design-vue'
-import { Sun, Moon, LogOut, Settings, Terminal } from 'lucide-vue-next'
+import { Sun, Moon, LogOut } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/theme'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
@@ -81,12 +68,6 @@ const router = useRouter()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const slots = useSlots()
-
-// 调试面板状态
-const showDebug = ref(false)
-
-// Inject settings modal methods
-const { openSettingsModal } = inject('settingsModal', {})
 
 const avatarDefaultSrc = computed(() => (userStore.uid ? generatePixelAvatar(userStore.uid) : ''))
 
@@ -129,17 +110,8 @@ const toggleTheme = () => {
   themeStore.toggleTheme()
 }
 
-// 前往设置页
-const goToSetting = () => {
-  if (openSettingsModal) {
-    openSettingsModal('base')
-  }
-}
-
 const openProfile = () => {
-  if (openSettingsModal) {
-    openSettingsModal('account')
-  }
+  router.push(userStore.isAdmin ? '/back/settings?tab=account' : '/front/agent')
 }
 </script>
 

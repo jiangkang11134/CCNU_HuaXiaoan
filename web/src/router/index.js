@@ -131,6 +131,32 @@ const router = createRouter({
       ]
     },
     {
+      path: '/back/debug',
+      name: 'debug',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'DebugComp',
+          component: () => import('../views/DebugView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
+      path: '/back/settings',
+      name: 'settings',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'SystemSettingsComp',
+          component: () => import('../views/SystemSettingsView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
       path: '/model-manage',
       redirect: '/back/model-manage'
     },

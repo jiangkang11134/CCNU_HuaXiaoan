@@ -1,23 +1,14 @@
 <template>
-  <a-modal
-    v-model:open="showModal"
-    title="调试面板（请在生产环境中谨慎使用）"
-    width="90%"
-    :footer="null"
-    :maskClosable="true"
-    :destroyOnClose="true"
-    class="debug-modal"
-  >
-    <div :class="['log-viewer', { fullscreen: state.isFullscreen }]" ref="logViewer">
-      <div class="control-panel">
-        <div class="button-group">
-          <a-button
-            @click="fetchLogs"
-            :loading="state.fetching"
-            :icon="h(ReloadOutlined)"
-            class="icon-only"
-          >
-          </a-button>
+  <div :class="['log-viewer', { fullscreen: state.isFullscreen }]" ref="logViewer">
+    <div class="control-panel">
+      <div class="button-group">
+        <a-button
+          @click="fetchLogs"
+          :loading="state.fetching"
+          :icon="h(ReloadOutlined)"
+          class="icon-only"
+        >
+        </a-button>
           <a-button @click="clearLogs" :icon="h(ClearOutlined)" class="icon-only"> </a-button>
           <a-button @click="printSystemConfig">
             <template #icon><SettingOutlined /></template>
@@ -130,8 +121,7 @@
           </template>
         </a-list>
       </a-modal>
-    </div>
-  </a-modal>
+  </div>
 </template>
 
 <script setup>
@@ -144,19 +134,8 @@ import {
   onUnmounted,
   nextTick,
   toRaw,
-  h,
-  watch
+  h
 } from 'vue'
-
-const showModal = defineModel('show')
-
-// 监听 showModal 变化，当打开时获取日志
-watch(showModal, (isOpen) => {
-  if (isOpen) {
-    // 延迟一下确保 DOM 渲染完成
-    setTimeout(fetchLogs, 100)
-  }
-})
 
 import { useConfigStore } from '@/stores/config'
 import { useUserStore } from '@/stores/user'
@@ -388,14 +367,15 @@ onMounted(() => {
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
   document.addEventListener('msfullscreenchange', handleFullscreenChange)
+  fetchLogs()
 })
 
 onActivated(() => {
   if (state.autoRefresh) {
     toggleAutoRefresh(true)
-  } else if (showModal.value) {
-    fetchLogs()
+    return
   }
+  fetchLogs()
 })
 
 onUnmounted(() => {

@@ -22,16 +22,6 @@
           <span class="user-greeting">{{ greeting }}</span>
         </div>
         <div class="header-actions">
-          <a-tooltip title="系统设置">
-            <button
-              type="button"
-              class="header-action-button"
-              aria-label="系统设置"
-              @click="openSettings"
-            >
-              <Settings class="icon" />
-            </button>
-          </a-tooltip>
           <a-tooltip :title="themeStore.isDark ? '切换到浅色模式' : '切换到深色模式'">
             <button
               type="button"
@@ -68,10 +58,10 @@
 </template>
 
 <script setup>
-import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useInfoStore } from '@/stores/info'
 import { useUserStore } from '@/stores/user'
-import { Clock, User, ClipboardList, Settings, Sun, Moon } from 'lucide-vue-next'
+import { Clock, User, ClipboardList, Sun, Moon } from 'lucide-vue-next'
 import { useTaskerStore } from '@/stores/tasker'
 import { useThemeStore } from '@/stores/theme'
 import { storeToRefs } from 'pinia'
@@ -83,7 +73,6 @@ const userStore = useUserStore()
 const taskerStore = useTaskerStore()
 const themeStore = useThemeStore()
 const { activeCount: activeCountRef } = storeToRefs(taskerStore)
-const { openSettingsModal } = inject('settingsModal', {})
 
 // 响应式数据
 const currentTime = ref('')
@@ -120,10 +109,6 @@ const activeTaskCount = computed(() => activeCountRef.value || 0)
 
 const openTaskCenter = () => {
   taskerStore.openDrawer()
-}
-
-const openSettings = () => {
-  openSettingsModal?.(userStore.isAdmin ? 'base' : 'account')
 }
 
 const toggleTheme = () => {
