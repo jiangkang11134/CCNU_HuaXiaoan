@@ -1,13 +1,6 @@
 <template>
   <div class="debug-view">
-    <PageHeader title="运行日志" :show-border="true">
-      <template #info>
-        <div class="summary-strip">
-          <span>非生产环境</span>
-          <span>仅系统管理员可见</span>
-        </div>
-      </template>
-    </PageHeader>
+    <PageHeader title="运行日志" :show-border="true" />
     <div class="debug-view-content">
       <DebugComponent />
     </div>
@@ -30,13 +23,4 @@ import DebugComponent from '@/components/DebugComponent.vue'
   padding: 16px var(--page-padding) 24px;
 }
 
-.summary-strip {
-  display: flex;
-  gap: 8px;
-
-  span {
-    color: var(--gray-600);
-    font-size: 13px;
-  }
-}
 </style>

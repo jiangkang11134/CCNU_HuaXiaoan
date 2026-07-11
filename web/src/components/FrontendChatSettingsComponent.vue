@@ -10,7 +10,7 @@
 
     <a-spin :spinning="loading">
       <div class="settings-form-grid">
-        <a-card size="small" title="品牌展示" :bordered="true">
+        <a-card v-if="activeSection === 'branding'" size="small" title="品牌展示" :bordered="true">
           <a-form layout="vertical">
             <a-form-item label="组织名称">
               <a-input v-model:value="config.organization_name" placeholder="实验室安全教育智能对话平台" />
@@ -60,7 +60,7 @@
           </a-form>
         </a-card>
 
-        <a-card size="small" title="前台展示" :bordered="true">
+        <a-card v-if="activeSection === 'portal'" size="small" title="前台展示" :bordered="true">
           <a-form layout="vertical">
             <a-form-item label="输入框标题">
               <a-radio-group v-model:value="config.welcome_title_mode">
@@ -83,7 +83,7 @@
           </a-form>
         </a-card>
 
-        <a-card size="small" title="前台智能体" :bordered="true">
+        <a-card v-if="activeSection === 'agents'" size="small" title="前台智能体" :bordered="true">
           <a-form layout="vertical">
             <a-form-item label="候选智能体">
               <a-select
@@ -105,7 +105,7 @@
           </a-form>
         </a-card>
 
-        <a-card size="small" title="输入区能力" :bordered="true">
+        <a-card v-if="activeSection === 'input'" size="small" title="输入区能力" :bordered="true">
           <div class="switch-grid">
             <label v-for="item in inputSwitches" :key="item.key" class="switch-row">
               <span>{{ item.label }}</span>
@@ -114,7 +114,7 @@
           </div>
         </a-card>
 
-        <a-card size="small" title="回答展示" :bordered="true">
+        <a-card v-if="activeSection === 'answer'" size="small" title="回答展示" :bordered="true">
           <div class="switch-grid">
             <label class="switch-row">
               <span>思考过程</span>
@@ -137,6 +137,13 @@ import { message } from 'ant-design-vue'
 import { UploadOutlined } from '@ant-design/icons-vue'
 import { frontendChatConfigApi } from '@/apis/system_api'
 import { useInfoStore } from '@/stores/info'
+
+defineProps({
+  activeSection: {
+    type: String,
+    default: 'branding'
+  }
+})
 
 const DEFAULT_CONFIG = {
   organization_name: '实验室安全教育智能对话平台',
@@ -266,12 +273,8 @@ onMounted(loadConfig)
 .frontend-chat-settings {
   .settings-form-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
-
-    @media (max-width: 760px) {
-      grid-template-columns: 1fr;
-    }
   }
 
   .field-gap {

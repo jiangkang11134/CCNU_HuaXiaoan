@@ -1,7 +1,6 @@
 <template>
   <div class="basic-settings-section">
-    <template v-if="userStore.isAdmin">
-      <div class="section-title">默认项配置</div>
+    <template v-if="userStore.isAdmin && activeSection === 'defaults'">
       <div class="settings-panel">
         <template v-if="userStore.isAdmin">
           <div class="setting-row two-cols">
@@ -180,39 +179,39 @@
         </template>
       </div>
 
-      <template v-if="userStore.isAdmin">
-        <div class="section-title">内容审查配置</div>
-        <div class="section">
-          <div class="card">
-            <span class="label">{{ items?.enable_content_guard?.des }}</span>
-            <a-switch
-              :checked="configStore.config?.enable_content_guard"
-              @change="handleChange('enable_content_guard', $event)"
-            />
-          </div>
-          <div class="card" v-if="configStore.config?.enable_content_guard">
-            <span class="label">{{ items?.enable_content_guard_llm?.des }}</span>
-            <a-switch
-              :checked="configStore.config?.enable_content_guard_llm"
-              @change="handleChange('enable_content_guard_llm', $event)"
-            />
-          </div>
-          <div
-            class="card card-select"
-            v-if="
-              configStore.config?.enable_content_guard &&
-              configStore.config?.enable_content_guard_llm
-            "
-          >
-            <span class="label">{{ items?.content_guard_llm_model?.des }}</span>
-            <ModelSelectorComponent
-              @select-model="handleContentGuardModelSelect"
-              :model_spec="configStore.config?.content_guard_llm_model"
-              placeholder="请选择模型"
-            />
-          </div>
+    </template>
+
+    <template v-if="userStore.isAdmin && activeSection === 'contentGuard'">
+      <div class="section">
+        <div class="card">
+          <span class="label">{{ items?.enable_content_guard?.des }}</span>
+          <a-switch
+            :checked="configStore.config?.enable_content_guard"
+            @change="handleChange('enable_content_guard', $event)"
+          />
         </div>
-      </template>
+        <div class="card" v-if="configStore.config?.enable_content_guard">
+          <span class="label">{{ items?.enable_content_guard_llm?.des }}</span>
+          <a-switch
+            :checked="configStore.config?.enable_content_guard_llm"
+            @change="handleChange('enable_content_guard_llm', $event)"
+          />
+        </div>
+        <div
+          class="card card-select"
+          v-if="
+            configStore.config?.enable_content_guard &&
+            configStore.config?.enable_content_guard_llm
+          "
+        >
+          <span class="label">{{ items?.content_guard_llm_model?.des }}</span>
+          <ModelSelectorComponent
+            @select-model="handleContentGuardModelSelect"
+            :model_spec="configStore.config?.content_guard_llm_model"
+            placeholder="请选择模型"
+          />
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -225,6 +224,13 @@ import { useUserStore } from '@/stores/user'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
 import EmbeddingModelSelector from '@/components/EmbeddingModelSelector.vue'
 import RerankModelSelector from '@/components/RerankModelSelector.vue'
+
+defineProps({
+  activeSection: {
+    type: String,
+    default: 'defaults'
+  }
+})
 
 const configStore = useConfigStore()
 const userStore = useUserStore()
