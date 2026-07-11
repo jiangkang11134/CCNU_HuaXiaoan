@@ -3,7 +3,7 @@ import { multimodalApi } from '@/apis/agent_api'
 
 const MAX_IMAGE_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
 
-export const uploadMultimodalImage = async (file) => {
+export const uploadMultimodalImage = async (file, options = {}) => {
   if (!file) return null
 
   if (file.size > MAX_IMAGE_UPLOAD_SIZE_BYTES) {
@@ -19,7 +19,9 @@ export const uploadMultimodalImage = async (file) => {
   try {
     message.loading({ content: '正在处理图片...', key: 'image-upload' })
 
-    const result = await multimodalApi.uploadImage(file)
+    const result = await multimodalApi.uploadImage(file, {
+      portalFeature: options.portalFeature || ''
+    })
     if (!result.success) {
       message.error({
         content: `图片处理失败: ${result.error}`,

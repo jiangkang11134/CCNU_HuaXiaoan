@@ -50,6 +50,9 @@
             <a-form-item label="输入框提示内容">
               <a-input v-model:value="config.frontend_input_placeholder" />
             </a-form-item>
+            <a-form-item label="实验室安全隐患识别">
+              <a-switch v-model:checked="config.show_lab_safety_recognition" />
+            </a-form-item>
           </a-form>
         </a-card>
 
@@ -124,6 +127,7 @@ const DEFAULT_CONFIG = {
   show_web_search_toggle: false,
   show_file_upload: false,
   show_image_upload: false,
+  show_lab_safety_recognition: true,
   show_voice_input: false,
   show_send_button: true,
   show_thought_process: true,

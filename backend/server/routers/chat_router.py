@@ -586,13 +586,18 @@ async def get_message_feedback(
 @chat.post("/image/upload", response_model=ImageUploadResponse)
 async def upload_image(
     file: UploadFile = File(...),
+    portal_feature: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_required_user),
 ):
     """
     上传并处理图片，返回base64编码的图片数据
     """
-    await ensure_frontend_image_upload_allowed(db, current_user)
+    await ensure_frontend_image_upload_allowed(
+        db,
+        current_user,
+        portal_feature=portal_feature,
+    )
     try:
         # 验证文件类型
         if not file.content_type or not file.content_type.startswith("image/"):

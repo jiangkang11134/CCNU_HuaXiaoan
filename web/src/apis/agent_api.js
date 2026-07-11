@@ -166,12 +166,15 @@ export const multimodalApi = {
    * @param {File} file - 图片文件
    * @returns {Promise} - 上传结果
    */
-  uploadImage: (file) => {
+  uploadImage: (file, options = {}) => {
     const formData = new FormData()
     formData.append('file', file)
+    const params = new URLSearchParams()
+    if (options.portalFeature) params.set('portal_feature', options.portalFeature)
+    const query = params.toString()
 
     return apiRequest(
-      '/api/chat/image/upload',
+      query ? `/api/chat/image/upload?${query}` : '/api/chat/image/upload',
       {
         method: 'POST',
         body: formData

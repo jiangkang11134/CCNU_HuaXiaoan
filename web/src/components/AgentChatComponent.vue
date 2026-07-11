@@ -2461,7 +2461,7 @@ const selectThreadFromRoute = async (threadId) => {
   return true
 }
 
-const handleSendMessage = async ({ image } = {}) => {
+const handleSendMessage = async ({ image, meta = {} } = {}) => {
   const text = userInput.value.trim()
   const imageContent = image?.imageContent || null
   if (
@@ -2555,6 +2555,7 @@ const handleSendMessage = async ({ image } = {}) => {
       agent_slug: currentAgentId.value,
       thread_id: threadId,
       meta: {
+        ...meta,
         request_id: requestId,
         attachment_file_ids: pendingAttachmentFileIds
       },
@@ -2574,6 +2575,32 @@ const handleSendMessage = async ({ image } = {}) => {
     resetOnGoingConv(threadId)
     handleChatError(error, 'send')
   }
+}
+
+const sendPresetMessage = async ({ text, image, meta = {} } = {}) => {
+  const presetText = String(text || '').trim()
+  if (!presetText) {
+    throw new Error('预设消息内容不能为空')
+  }
+  if (!image?.imageContent) {
+    throw new Error('图片内容不能为空')
+  }
+  if (!currentAgent.value) {
+    throw new Error('当前没有可用智能体')
+  }
+  if (isProcessing.value) {
+    throw new Error('当前对话正在生成回复')
+  }
+  if (sendCooldownActive.value) {
+    throw new Error('发送过于频繁，请稍后再试')
+  }
+  if (props.sendDisabled) {
+    throw new Error('当前状态不允许发送消息')
+  }
+
+  userInput.value = presetText
+  await handleSendMessage({ image, meta })
+  return currentChatId.value
 }
 
 // 发送或中断
@@ -2687,7 +2714,8 @@ const buildExportPayload = () => {
 
 defineExpose({
   getExportPayload: buildExportPayload,
-  selectThreadFromRoute
+  selectThreadFromRoute,
+  sendPresetMessage
 })
 
 const handleAgentStateRefresh = async (threadId = null) => {

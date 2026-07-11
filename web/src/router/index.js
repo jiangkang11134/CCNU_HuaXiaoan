@@ -78,6 +78,25 @@ const router = createRouter({
       ]
     },
     {
+      path: '/front/lab-safety',
+      name: 'LabSafetyRecognitionMain',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'LabSafetyRecognition',
+          component: () => import('../views/LabSafetyRecognitionView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
+        },
+        {
+          path: ':thread_id',
+          name: 'LabSafetyRecognitionWithThreadId',
+          component: () => import('../views/LabSafetyRecognitionView.vue'),
+          meta: { keepAlive: false, requiresAuth: true }
+        }
+      ]
+    },
+    {
       path: '/workspace',
       redirect: '/back/workspace'
     },
@@ -243,6 +262,16 @@ router.beforeEach(async (to) => {
 
   if (isLoggedIn && targetPortal === 'back' && !isAdminRole(userStore.userRole)) {
     return '/front/agent'
+  }
+
+  if (isLoggedIn && to.path.startsWith('/front/lab-safety') && !isAdminRole(userStore.userRole)) {
+    const agentStore = useAgentStore()
+    if (!agentStore.isInitialized) {
+      await agentStore.initialize()
+    }
+    if (agentStore.frontendChatConfig?.show_lab_safety_recognition === false) {
+      return '/front/agent'
+    }
   }
 
   // 如果路由需要管理员权限但用户不是管理员

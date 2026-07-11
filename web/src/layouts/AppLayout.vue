@@ -10,7 +10,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessageCirclePlus,
-  Search
+  Search,
+  ShieldCheck
 } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
@@ -118,6 +119,15 @@ const mainList = computed(() => {
       action: true,
       exactActive: true
     })
+    if (agentStore.frontendChatConfig?.show_lab_safety_recognition !== false) {
+      items.push({
+        name: '安全隐患识别',
+        path: '/front/lab-safety',
+        activePaths: ['/front/lab-safety'],
+        icon: ShieldCheck,
+        activeIcon: ShieldCheck
+      })
+    }
     return items
   }
 

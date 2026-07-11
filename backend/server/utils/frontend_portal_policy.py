@@ -36,6 +36,7 @@ FRONTEND_CHAT_CONFIG_DEFAULT = {
     "show_web_search_toggle": False,
     "show_file_upload": False,
     "show_image_upload": False,
+    "show_lab_safety_recognition": True,
     "show_voice_input": False,
     "show_send_button": True,
     "show_thought_process": True,
@@ -49,6 +50,7 @@ BOOLEAN_CONFIG_KEYS = {
     "show_web_search_toggle",
     "show_file_upload",
     "show_image_upload",
+    "show_lab_safety_recognition",
     "show_voice_input",
     "show_send_button",
     "show_thought_process",
@@ -243,6 +245,7 @@ async def ensure_frontend_run_allowed(
     agent_slug: str,
     model_spec: str | None = None,
     has_image_content: bool = False,
+    portal_feature: str | None = None,
 ) -> None:
     """
     校验前台普通用户发起智能体运行时的业务约束。
@@ -253,6 +256,7 @@ async def ensure_frontend_run_allowed(
         agent_slug: 智能体 slug。
         model_spec: 对话级模型覆盖。
         has_image_content: 是否携带图片内容。
+        portal_feature: 前台业务功能标识。
     """
     if not is_frontend_chat_user(user):
         return
@@ -262,7 +266,11 @@ async def ensure_frontend_run_allowed(
         raise HTTPException(status_code=403, detail="该智能体未开放给前台用户")
     if model_spec and not config_data.get("show_model_selector"):
         raise HTTPException(status_code=403, detail="前台未开放模型选择")
-    if has_image_content and not config_data.get("show_image_upload"):
+    lab_safety_image_allowed = (
+        portal_feature == "lab_safety_recognition"
+        and config_data.get("show_lab_safety_recognition")
+    )
+    if has_image_content and not config_data.get("show_image_upload") and not lab_safety_image_allowed:
         raise HTTPException(status_code=403, detail="前台未开放图片上传")
 
 
@@ -282,17 +290,27 @@ async def ensure_frontend_file_upload_allowed(db: AsyncSession, user: User) -> N
         raise HTTPException(status_code=403, detail="前台未开放文件上传")
 
 
-async def ensure_frontend_image_upload_allowed(db: AsyncSession, user: User) -> None:
+async def ensure_frontend_image_upload_allowed(
+    db: AsyncSession,
+    user: User,
+    *,
+    portal_feature: str | None = None,
+) -> None:
     """
     校验前台普通用户是否可以上传图片。
 
     Args:
         db: 数据库会话。
         user: 当前用户。
+        portal_feature: 前台业务功能标识。
     """
     if not is_frontend_chat_user(user):
         return
 
     config_data = await get_frontend_chat_config(db)
-    if not config_data.get("show_image_upload"):
+    lab_safety_image_allowed = (
+        portal_feature == "lab_safety_recognition"
+        and config_data.get("show_lab_safety_recognition")
+    )
+    if not config_data.get("show_image_upload") and not lab_safety_image_allowed:
         raise HTTPException(status_code=403, detail="前台未开放图片上传")

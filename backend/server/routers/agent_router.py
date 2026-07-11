@@ -275,6 +275,7 @@ async def create_agent_run(
         agent_slug=payload.agent_slug,
         model_spec=payload.model_spec,
         has_image_content=bool(payload.image_content),
+        portal_feature=payload.meta.get("portal_feature") if isinstance(payload.meta, dict) else None,
     )
     input_message = None
     if payload.resume is None and payload.query:
