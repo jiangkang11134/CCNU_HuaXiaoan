@@ -26,11 +26,7 @@ export {
   apiAdminGet,
   apiAdminPost,
   apiAdminPut,
-  apiAdminDelete,
-  apiSuperAdminGet,
-  apiSuperAdminPost,
-  apiSuperAdminPut,
-  apiSuperAdminDelete
+  apiAdminDelete
 } from './base'
 
 /**

@@ -68,7 +68,7 @@
             class="sider-item"
             :class="{ activesec: activeTab === 'department' }"
             @click="activeTab = 'department'"
-            v-if="userStore.isSuperAdmin"
+            v-if="userStore.isAdmin"
           >
             <Users class="icon" :size="18" />
             <span>部门管理</span>
@@ -123,7 +123,7 @@
           class="nav-item"
           :class="{ active: activeTab === 'department' }"
           @click="activeTab = 'department'"
-          v-if="userStore.isSuperAdmin"
+          v-if="userStore.isAdmin"
         >
           部门管理
         </div>
@@ -152,7 +152,7 @@
             <UserManagementComponent />
           </div>
 
-          <div v-show="activeTab === 'department'" v-if="userStore.isSuperAdmin">
+          <div v-show="activeTab === 'department'" v-if="userStore.isAdmin">
             <DepartmentManagementComponent />
           </div>
         </div>
@@ -204,8 +204,7 @@ const visible = computed({
 const availableTabs = computed(() => {
   const tabs = []
   if (userStore.isLoggedIn) tabs.push('account', 'userConfig')
-  if (userStore.isAdmin) tabs.push('base', 'frontendChat', 'user')
-  if (userStore.isSuperAdmin) tabs.push('department')
+  if (userStore.isAdmin) tabs.push('base', 'frontendChat', 'user', 'department')
   return tabs
 })
 

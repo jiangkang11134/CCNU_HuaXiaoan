@@ -150,10 +150,10 @@ class UserRepository:
             return [uid for (uid,) in result.all()]
 
     async def get_admin_count_in_department(self, department_id: int, exclude_user_id: int | None = None) -> int:
-        """统计部门中管理员数量"""
+        """统计部门中系统管理员数量"""
         async with pg_manager.get_async_session_context() as session:
             query = select(func.count(User.id)).where(
-                User.department_id == department_id, User.role == "admin", User.is_deleted == 0
+                User.department_id == department_id, User.role == "system_admin", User.is_deleted == 0
             )
             if exclude_user_id is not None:
                 query = query.where(User.id != exclude_user_id)

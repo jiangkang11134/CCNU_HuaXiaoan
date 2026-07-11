@@ -61,6 +61,11 @@ export const frontendChatConfigApi = {
   updateConfig: async (payload) => apiAdminPut('/api/system/frontend-chat-config', payload)
 }
 
+export const globalAgentPromptApi = {
+  getConfig: async () => apiGet('/api/system/global-agent-prompt'),
+  updateConfig: async (payload) => apiAdminPut('/api/system/global-agent-prompt', payload)
+}
+
 // =============================================================================
 // === 信息管理分组 ===
 // =============================================================================

@@ -60,7 +60,7 @@ TEXT_FILE_EXTENSIONS = {
 BUILTIN_SKILL_OPERATOR = "builtin-system"
 SKILL_SOURCE_TYPES = {"builtin", "upload", "remote"}
 ACCESS_LEVELS = SHARE_ACCESS_LEVELS
-ADMIN_ROLES = {"admin", "superadmin"}
+ADMIN_ROLES = {"system_admin"}
 DEFAULT_SKILL_SHARE_CONFIG = {"access_level": "user", "department_ids": [], "user_uids": []}
 BUILTIN_SKILL_SHARE_CONFIG = {"access_level": "global", "department_ids": [], "user_uids": []}
 SKILL_DRAFT_TTL_SECONDS = 60 * 60
@@ -136,7 +136,7 @@ def normalize_skill_share_config(
 def user_can_access_skill(user: User, skill: Skill, *, require_enabled: bool = True) -> bool:
     if require_enabled and not skill.enabled:
         return False
-    if user.role == "superadmin":
+    if user.role == "system_admin":
         return True
 
     user_uid = str(user.uid or "")

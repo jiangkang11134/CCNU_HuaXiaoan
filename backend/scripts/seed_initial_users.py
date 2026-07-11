@@ -15,10 +15,10 @@ for import_path in (APP_ROOT, APP_ROOT / "package"):
     if import_path_str not in sys.path:
         sys.path.insert(0, import_path_str)
 
-SUPERADMIN_UID = "zwj"
-SUPERADMIN_NAME = "张文杰"
-SUPERADMIN_PHONE_NUMBER = "15251638888"
-SUPERADMIN_PASSWORD = "zwj12138"
+SYSTEM_ADMIN_UID = "zwj"
+SYSTEM_ADMIN_NAME = "张文杰"
+SYSTEM_ADMIN_PHONE_NUMBER = "15251638888"
+SYSTEM_ADMIN_PASSWORD = "zwj12138"
 DEFAULT_USER_PASSWORD = "yuxi123456"
 
 
@@ -53,9 +53,9 @@ async def ensure_uninitialized(session) -> None:
     if user_count:
         raise SeedError(f"系统已初始化：users 表已有 {user_count} 个用户，脚本已退出。")
 
-    superadmin_count = await session.scalar(select(func.count(User.id)).where(User.role == "superadmin"))
-    if superadmin_count:
-        raise SeedError("系统已初始化：已存在超级管理员，脚本已退出。")
+    system_admin_count = await session.scalar(select(func.count(User.id)).where(User.role == "system_admin"))
+    if system_admin_count:
+        raise SeedError("系统已初始化：已存在系统管理员，脚本已退出。")
 
 
 async def seed_initial_users() -> None:
@@ -85,11 +85,12 @@ async def seed_initial_users() -> None:
 
             users = [
                 User(
-                    username=SUPERADMIN_NAME,
-                    uid=SUPERADMIN_UID,
-                    phone_number=SUPERADMIN_PHONE_NUMBER,
-                    password_hash=AuthUtils.hash_password(SUPERADMIN_PASSWORD),
-                    role="superadmin",
+                    username=SYSTEM_ADMIN_NAME,
+                    uid=SYSTEM_ADMIN_UID,
+                    phone_number=SYSTEM_ADMIN_PHONE_NUMBER,
+                    password_hash=AuthUtils.hash_password(SYSTEM_ADMIN_PASSWORD),
+                    role="system_admin",
+                    business_role="system_admin",
                     department_id=departments["dev"].id,
                     last_login=utc_now_naive(),
                 )
@@ -97,23 +98,15 @@ async def seed_initial_users() -> None:
 
             for department_seed in DEPARTMENTS:
                 department = departments[department_seed["prefix"]]
-                for index in range(1, 3):
-                    users.append(
-                        User(
-                            username=f"{department_seed['name']}管理员{index}",
-                            uid=f"{department_seed['prefix']}_admin_{index}",
-                            password_hash=AuthUtils.hash_password(DEFAULT_USER_PASSWORD),
-                            role="admin",
-                            department_id=department.id,
-                        )
-                    )
                 for index in range(1, department_seed["normal_count"] + 1):
+                    business_role = "student" if index % 2 else "faculty"
                     users.append(
                         User(
                             username=f"{department_seed['name']}用户{index}",
-                            uid=f"{department_seed['prefix']}_user_{index:02d}",
+                            uid=f"{len(users) + 100000:06d}",
                             password_hash=AuthUtils.hash_password(DEFAULT_USER_PASSWORD),
                             role="user",
+                            business_role=business_role,
                             department_id=department.id,
                         )
                     )
@@ -135,11 +128,11 @@ def main() -> int:
         return 1
 
     print(
-        f"初始化完成：已创建超级管理员 {SUPERADMIN_NAME}（{SUPERADMIN_UID}）、"
-        "3 个部门、6 个部门管理员和 14 个普通用户。"
+        f"初始化完成：已创建系统管理员 {SYSTEM_ADMIN_NAME}（{SYSTEM_ADMIN_UID}）、"
+        "3 个部门和 14 个普通用户。"
     )
-    print("超级管理员密码：zwj12138")
-    print("部门管理员和普通用户默认密码：yuxi123456")
+    print("系统管理员密码：zwj12138")
+    print("普通用户默认密码：yuxi123456")
     return 0
 
 

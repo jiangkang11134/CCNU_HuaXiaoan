@@ -10,6 +10,11 @@ from yuxi.storage.postgres.models_business import SystemKV, User
 from yuxi.utils.logging_config import logger
 
 from server.utils.auth_middleware import get_admin_user, get_db, get_required_user
+from yuxi.services.agent_prompt_policy import (
+    get_global_agent_prompt_config as load_global_agent_prompt_config,
+    get_global_agent_prompt_record,
+    normalize_global_agent_prompt_config,
+)
 from server.utils.frontend_portal_policy import (
     FRONTEND_CHAT_CONFIG_KEY,
     get_frontend_chat_config as load_frontend_chat_config,
@@ -149,6 +154,40 @@ async def update_frontend_chat_config(
     await db.commit()
     await db.refresh(kv)
     return {"success": True, "data": normalize_frontend_chat_config(kv.value, agent_options)}
+
+
+@system.get("/global-agent-prompt")
+async def get_global_agent_prompt(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_required_user)):
+    """获取全局智能体附加提示词配置。"""
+    return {"success": True, "data": await load_global_agent_prompt_config(db)}
+
+
+@system.put("/global-agent-prompt")
+async def update_global_agent_prompt(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """更新全局智能体附加提示词配置。"""
+    try:
+        config_data = normalize_global_agent_prompt_config(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    kv = await get_global_agent_prompt_record(db)
+    if kv is None:
+        kv = SystemKV(
+            key="global_agent_prompt",
+            value=config_data,
+            description="全局智能体附加提示词配置",
+        )
+        db.add(kv)
+    else:
+        kv.value = config_data
+
+    await db.commit()
+    await db.refresh(kv)
+    return {"success": True, "data": normalize_global_agent_prompt_config(kv.value)}
 
 
 @system.get("/logs")

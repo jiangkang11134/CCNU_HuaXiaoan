@@ -135,7 +135,7 @@ def validate_agent_env(env: dict[str, Any]) -> dict[str, str]:
 
 
 def ensure_api_key_owner(api_key: APIKey, current_user: User) -> None:
-    if api_key.user_id != current_user.id and current_user.role != "superadmin":
+    if api_key.user_id != current_user.id and current_user.role != "system_admin":
         raise HTTPException(status_code=403, detail="无权操作此 API Key")
 
 
@@ -157,7 +157,7 @@ async def list_api_keys(
 ):
     query = select(APIKey).order_by(APIKey.created_at.desc()).offset(skip).limit(limit)
     count_query = select(func.count(APIKey.id))
-    if current_user.role != "superadmin":
+    if current_user.role != "system_admin":
         query = query.filter(APIKey.user_id == current_user.id)
         count_query = count_query.filter(APIKey.user_id == current_user.id)
 
@@ -177,7 +177,7 @@ async def create_api_key(
     current_user: User = Depends(get_required_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if data.user_id and data.user_id != current_user.id and current_user.role != "superadmin":
+    if data.user_id and data.user_id != current_user.id and current_user.role != "system_admin":
         raise HTTPException(status_code=403, detail="无权为其他用户创建 API Key")
 
     target_user = current_user

@@ -1,4 +1,4 @@
-import { useUserStore, checkAdminPermission, checkSuperAdminPermission } from '@/stores/user'
+import { useUserStore, checkAdminPermission } from '@/stores/user'
 import { message } from 'ant-design-vue'
 import { getPortalLoginPath } from '@/utils/portal'
 
@@ -160,11 +160,6 @@ export function apiAdminGet(url, options = {}, responseType = 'json') {
   return apiGet(url, options, true, responseType)
 }
 
-export function apiSuperAdminGet(url, options = {}, responseType = 'json') {
-  checkSuperAdminPermission()
-  return apiGet(url, options, true, responseType)
-}
-
 /**
  * 发送POST请求
  * @param {string} url - API端点
@@ -189,11 +184,6 @@ export function apiPost(url, data = {}, options = {}, requiresAuth = true, respo
 
 export function apiAdminPost(url, data = {}, options = {}, responseType = 'json') {
   checkAdminPermission()
-  return apiPost(url, data, options, true, responseType)
-}
-
-export function apiSuperAdminPost(url, data = {}, options = {}, responseType = 'json') {
-  checkSuperAdminPermission()
   return apiPost(url, data, options, true, responseType)
 }
 
@@ -224,11 +214,6 @@ export function apiAdminPut(url, data = {}, options = {}, responseType = 'json')
   return apiPut(url, data, options, true, responseType)
 }
 
-export function apiSuperAdminPut(url, data = {}, options = {}, responseType = 'json') {
-  checkSuperAdminPermission()
-  return apiPut(url, data, options, true, responseType)
-}
-
 /**
  * 发送DELETE请求
  * @param {string} url - API端点
@@ -243,10 +228,5 @@ export function apiDelete(url, options = {}, requiresAuth = true, responseType =
 
 export function apiAdminDelete(url, options = {}) {
   checkAdminPermission()
-  return apiDelete(url, options, true)
-}
-
-export function apiSuperAdminDelete(url, options = {}) {
-  checkSuperAdminPermission()
   return apiDelete(url, options, true)
 }

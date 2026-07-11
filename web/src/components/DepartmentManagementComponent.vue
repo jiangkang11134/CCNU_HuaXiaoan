@@ -118,66 +118,15 @@
           />
         </a-form-item>
 
-        <a-divider v-if="!departmentManagement.editMode" />
-
-        <template v-if="!departmentManagement.editMode">
-          <p class="admin-section-hint">
-            创建部门时必须同时创建管理员，该管理员将负责管理本部门用户
-          </p>
-
-          <a-form-item label="管理员UID" required class="form-item">
-            <a-input
-              v-model:value="departmentManagement.form.adminUid"
-              placeholder="请输入管理员UID（3-20位字母/数字/下划线）"
-              size="large"
-              :maxlength="20"
-              @blur="checkAdminUid"
-            />
-            <div v-if="departmentManagement.form.uidError" class="error-text">
-              {{ departmentManagement.form.uidError }}
-            </div>
-            <div v-else class="help-text">此 UID 将用于登录</div>
-          </a-form-item>
-
-          <a-form-item label="密码" required class="form-item">
-            <a-input-password
-              v-model:value="departmentManagement.form.adminPassword"
-              placeholder="请输入管理员密码"
-              size="large"
-              :maxlength="50"
-            />
-          </a-form-item>
-
-          <a-form-item label="确认密码" required class="form-item">
-            <a-input-password
-              v-model:value="departmentManagement.form.adminConfirmPassword"
-              placeholder="请再次输入密码"
-              size="large"
-              :maxlength="50"
-            />
-          </a-form-item>
-
-          <a-form-item label="手机号（可选）" class="form-item">
-            <a-input
-              v-model:value="departmentManagement.form.adminPhone"
-              placeholder="请输入手机号（可用于登录）"
-              size="large"
-              :maxlength="11"
-            />
-            <div v-if="departmentManagement.form.phoneError" class="error-text">
-              {{ departmentManagement.form.phoneError }}
-            </div>
-          </a-form-item>
-        </template>
       </a-form>
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { reactive, onMounted, watch } from 'vue'
+import { reactive, onMounted } from 'vue'
 import { notification, message, Modal } from 'ant-design-vue'
-import { departmentApi, apiSuperAdminGet } from '@/apis'
+import { departmentApi } from '@/apis'
 import { Plus, RefreshCw, SquarePen, Trash2 } from 'lucide-vue-next'
 
 // 表格列定义
@@ -221,13 +170,7 @@ const departmentManagement = reactive({
   editDepartmentId: null,
   form: {
     name: '',
-    description: '',
-    adminUid: '',
-    adminPassword: '',
-    adminConfirmPassword: '',
-    adminPhone: '',
-    uidError: '',
-    phoneError: ''
+    description: ''
   }
 })
 
@@ -268,13 +211,7 @@ const showAddDepartmentModal = () => {
   departmentManagement.editDepartmentId = null
   departmentManagement.form = {
     name: '',
-    description: '',
-    adminUid: '',
-    adminPassword: '',
-    adminConfirmPassword: '',
-    adminPhone: '',
-    uidError: '',
-    phoneError: ''
+    description: ''
   }
   departmentManagement.modalVisible = true
 }
@@ -286,66 +223,9 @@ const showEditDepartmentModal = (department) => {
   departmentManagement.editDepartmentId = department.id
   departmentManagement.form = {
     name: department.name,
-    description: department.description || '',
-    adminUid: '',
-    adminPassword: '',
-    adminConfirmPassword: '',
-    adminPhone: '',
-    uidError: '',
-    phoneError: ''
+    description: department.description || ''
   }
   departmentManagement.modalVisible = true
-}
-
-// 验证手机号格式
-const validatePhoneNumber = (phone) => {
-  if (!phone) {
-    return true // 手机号可选
-  }
-  const phoneRegex = /^1[3-9]\d{9}$/
-  return phoneRegex.test(phone)
-}
-
-// 监听手机号输入变化
-watch(
-  () => departmentManagement.form.adminPhone,
-  (newPhone) => {
-    departmentManagement.form.phoneError = ''
-    if (newPhone && !validatePhoneNumber(newPhone)) {
-      departmentManagement.form.phoneError = '请输入正确的手机号格式'
-    }
-  }
-)
-
-// 检查管理员UID是否可用
-const checkAdminUid = async () => {
-  const uid = departmentManagement.form.adminUid.trim()
-  departmentManagement.form.uidError = ''
-
-  if (!uid) {
-    return
-  }
-
-  // 验证格式
-  if (!/^[a-zA-Z0-9_]+$/.test(uid)) {
-    departmentManagement.form.uidError = 'UID只能包含字母、数字和下划线'
-    return
-  }
-
-  if (uid.length < 3 || uid.length > 20) {
-    departmentManagement.form.uidError = 'UID长度必须在3-20个字符之间'
-    return
-  }
-
-  // 检查是否已存在
-  try {
-    const result = await apiSuperAdminGet(`/api/auth/check-uid/${uid}`)
-    if (!result.is_available) {
-      departmentManagement.form.uidError = '该UID已被使用'
-    }
-  } catch (error) {
-    console.error('检查UID失败:', error)
-  }
 }
 
 // 处理部门表单提交
@@ -362,50 +242,6 @@ const handleDepartmentFormSubmit = async () => {
       return
     }
 
-    // 验证管理员UID
-    const adminUid = departmentManagement.form.adminUid.trim()
-    if (!adminUid) {
-      notification.error({ message: '请输入管理员UID' })
-      return
-    }
-
-    if (!/^[a-zA-Z0-9_]+$/.test(adminUid)) {
-      notification.error({ message: 'UID只能包含字母、数字和下划线' })
-      return
-    }
-
-    if (adminUid.length < 3 || adminUid.length > 20) {
-      notification.error({ message: 'UID长度必须在3-20个字符之间' })
-      return
-    }
-
-    if (departmentManagement.form.uidError) {
-      notification.error({ message: '管理员UID已存在或格式错误' })
-      return
-    }
-
-    // 验证密码
-    if (!departmentManagement.form.adminPassword) {
-      notification.error({ message: '请输入管理员密码' })
-      return
-    }
-
-    if (
-      departmentManagement.form.adminPassword !== departmentManagement.form.adminConfirmPassword
-    ) {
-      notification.error({ message: '两次输入的密码不一致' })
-      return
-    }
-
-    // 验证手机号
-    if (
-      departmentManagement.form.adminPhone &&
-      !validatePhoneNumber(departmentManagement.form.adminPhone)
-    ) {
-      notification.error({ message: '请输入正确的手机号格式' })
-      return
-    }
-
     departmentManagement.loading = true
 
     if (departmentManagement.editMode) {
@@ -416,16 +252,12 @@ const handleDepartmentFormSubmit = async () => {
       })
       notification.success({ message: '部门更新成功' })
     } else {
-      // 创建部门，同时创建管理员
       await departmentApi.createDepartment({
         name: departmentManagement.form.name.trim(),
-        description: departmentManagement.form.description.trim() || undefined,
-        admin_uid: adminUid,
-        admin_password: departmentManagement.form.adminPassword,
-        admin_phone: departmentManagement.form.adminPhone || undefined
+        description: departmentManagement.form.description.trim() || undefined
       })
 
-      message.success(`部门创建成功，管理员 "${adminUid}" 已创建`)
+      message.success('部门创建成功')
     }
 
     // 重新获取部门列表

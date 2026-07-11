@@ -3,7 +3,7 @@
     <template v-if="userStore.isAdmin">
       <div class="section-title">默认项配置</div>
       <div class="settings-panel">
-        <template v-if="userStore.isSuperAdmin">
+        <template v-if="userStore.isAdmin">
           <div class="setting-row two-cols">
             <div class="col-item">
               <div class="setting-label">{{ items?.default_model?.des || '默认对话模型' }}</div>
@@ -178,7 +178,7 @@
         </template>
       </div>
 
-      <template v-if="userStore.isSuperAdmin">
+      <template v-if="userStore.isAdmin">
         <div class="section-title">内容审查配置</div>
         <div class="section">
           <div class="card">

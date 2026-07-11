@@ -752,7 +752,7 @@ const fileList = computed(() => {
   return (store.documentFiles || []).map((f) => f.filename).filter(Boolean)
 })
 
-const canEditShareConfig = computed(() => userStore.isSuperAdmin || userStore.isAdmin)
+const canEditShareConfig = computed(() => userStore.isAdmin)
 
 const shareConfigDisplay = computed(() => {
   const shareConfig = database.value?.share_config || { access_level: 'global' }

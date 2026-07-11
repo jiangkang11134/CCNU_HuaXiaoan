@@ -92,7 +92,7 @@ async def get_mcp_servers(
     """获取所有 MCP 服务器配置（普通用户仅获取脱敏的基础信息）"""
     try:
         servers = await get_all_mcp_servers(db)
-        if current_user.role in ["admin", "superadmin"]:
+        if current_user.role == "system_admin":
             return {"success": True, "data": [s.to_dict() for s in servers]}
 
         data = []

@@ -46,10 +46,8 @@ DEFAULT_YUXI_SUMMARY_PROMPT = """你是对话上下文压缩助手。
 def _role_can_access(auth: str | None, role: str | None) -> bool:
     if not auth:
         return True
-    if auth == "admin":
-        return role in {"admin", "superadmin"}
-    if auth == "superadmin":
-        return role == "superadmin"
+    if auth == "system_admin":
+        return role == "system_admin"
     return False
 
 
@@ -60,9 +58,16 @@ async def build_agent_input_context(
     uid: str,
     run_id: str | None = None,
     request_id: str | None = None,
+    global_system_prompt: str = "",
 ) -> dict:
     input_context = dict(agent_config or {})
     input_context.update({"uid": uid, "thread_id": thread_id, "run_id": run_id, "request_id": request_id})
+    normalized_global_prompt = global_system_prompt.strip()
+    if normalized_global_prompt:
+        base_system_prompt = str(input_context.get("system_prompt") or "").strip()
+        input_context["system_prompt"] = (
+            f"{base_system_prompt}\n\n{normalized_global_prompt}" if base_system_prompt else normalized_global_prompt
+        )
     return input_context
 
 
@@ -197,7 +202,7 @@ class BaseContext:
                 f"{DEFAULT_SUMMARY_THRESHOLD_K}K。"
             ),
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -209,7 +214,7 @@ class BaseContext:
                 f"上下文摘要触发后，除摘要消息外保留最近的消息数量，默认 {DEFAULT_SUMMARY_KEEP_MESSAGES} 条。"
             ),
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -220,7 +225,7 @@ class BaseContext:
             "description": "触发上下文摘要时使用的提示词，必须能接收 {messages} 作为待摘要消息占位符。",
             "type": "string",
             "kind": "prompt",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -234,7 +239,7 @@ class BaseContext:
                 f"{DEFAULT_SUMMARY_TOOL_RESULT_TOKEN_LIMIT}。"
             ),
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -248,7 +253,7 @@ class BaseContext:
                 f"{DEFAULT_SUMMARY_L2_TRIGGER_RATIO}。"
             ),
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -261,7 +266,7 @@ class BaseContext:
                 f"{DEFAULT_MAX_EXECUTION_STEPS}。"
             ),
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 
@@ -271,7 +276,7 @@ class BaseContext:
             "name": "模型重试次数",
             "description": "模型调用失败时的最大重试次数，默认值为 2。",
             "type": "number",
-            "auth": "admin",
+            "auth": "system_admin",
         },
     )
 

@@ -145,23 +145,19 @@ const mainList = computed(() => {
     activeIcon: Box
   })
 
-  if (userStore.isSuperAdmin) {
-    items.push({
-      name: '对话数据',
-      path: '/back/conversations',
-      icon: BarChart3,
-      activeIcon: BarChart3
-    })
-  }
+  items.push({
+    name: '对话数据',
+    path: '/back/conversations',
+    icon: BarChart3,
+    activeIcon: BarChart3
+  })
 
-  if (userStore.isSuperAdmin) {
-    items.push({
-      name: '数据总览',
-      path: '/back/dashboard',
-      icon: BarChart3,
-      activeIcon: BarChart3
-    })
-  }
+  items.push({
+    name: '数据总览',
+    path: '/back/dashboard',
+    icon: BarChart3,
+    activeIcon: BarChart3
+  })
 
   return items
 })

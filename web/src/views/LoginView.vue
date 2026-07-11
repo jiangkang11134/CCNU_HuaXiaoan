@@ -41,7 +41,7 @@
           <div class="form-wrapper">
             <header class="form-header">
               <!-- 如果是在初始化，显示特定标题 -->
-              <h2 v-if="isFirstRun" class="init-title">系统初始化，请创建超级管理员</h2>
+              <h2 v-if="isFirstRun" class="init-title">系统初始化，请创建系统管理员</h2>
               <p v-else class="welcome-text">{{ pageTitle }}</p>
             </header>
 
@@ -144,7 +144,7 @@
 
                   <a-form-item>
                     <a-button type="primary" html-type="submit" :loading="loading" block
-                      >创建管理员账户</a-button
+                      >创建系统管理员账户</a-button
                     >
                   </a-form-item>
                 </a-form>
@@ -192,7 +192,7 @@
                     <a-form-item label="身份" name="businessRole">
                       <a-select v-model:value="registerForm.businessRole">
                         <a-select-option value="student">学生</a-select-option>
-                        <a-select-option value="faculty">教师</a-select-option>
+                        <a-select-option value="faculty">教职工</a-select-option>
                       </a-select>
                     </a-form-item>
                   </template>
@@ -659,7 +659,7 @@ const handleInitialize = async () => {
       phone_number: adminForm.phone_number || null // 空字符串转为null
     })
 
-    message.success('管理员账户创建成功')
+    message.success('系统管理员账户创建成功')
     router.push('/back/extensions')
   } catch (error) {
     console.error('初始化失败:', error)

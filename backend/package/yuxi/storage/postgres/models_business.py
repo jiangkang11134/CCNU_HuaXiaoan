@@ -59,7 +59,7 @@ class User(Base):
     phone_number = Column(String, nullable=True, unique=True, index=True)  # 手机号
     avatar = Column(String, nullable=True)  # 头像URL
     password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False, default="user")  # 角色: superadmin, admin, user
+    role = Column(String, nullable=False, default="user")  # 角色: system_admin, user
     business_role = Column(String(32), nullable=False, default="student")  # 业务角色: student, faculty, system_admin
     is_builtin = Column(Boolean, nullable=False, default=False, index=True)
     department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)  # 部门ID

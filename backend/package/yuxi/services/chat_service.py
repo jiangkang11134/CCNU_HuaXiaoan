@@ -29,6 +29,7 @@ from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.repositories.subagent_thread_repository import SubagentThreadRepository
+from yuxi.services.agent_prompt_policy import get_enabled_global_agent_prompt
 from yuxi.services.conversation_service import serialize_attachment
 from yuxi.services.input_message_service import AgentRunInputMessage
 from yuxi.services.langfuse_service import (
@@ -835,12 +836,14 @@ async def stream_agent_chat(
     )
 
     messages = [human_message]
+    global_system_prompt = await get_enabled_global_agent_prompt(db)
     input_context = await build_agent_input_context(
         agent_config,
         thread_id=thread_id,
         uid=uid,
         run_id=meta.get("run_id"),
         request_id=meta.get("request_id"),
+        global_system_prompt=global_system_prompt,
     )
     _apply_model_override(input_context, meta)
     _apply_subagent_runtime_context(input_context, meta)
@@ -1140,12 +1143,14 @@ async def stream_agent_resume(
 
     meta["agent_slug"] = agent_item.slug
     meta["backend_id"] = agent_item.backend_id
+    global_system_prompt = await get_enabled_global_agent_prompt(db)
     input_context = await build_agent_input_context(
         agent_config or {},
         thread_id=thread_id,
         uid=uid,
         run_id=meta.get("run_id"),
         request_id=meta.get("request_id"),
+        global_system_prompt=global_system_prompt,
     )
     _apply_model_override(input_context, meta)
     context = _build_agent_context(agent, input_context)
@@ -1361,10 +1366,12 @@ async def get_agent_state_view(
             user=current_user,
             context_schema=agent.context_schema,
         )
+        global_system_prompt = await get_enabled_global_agent_prompt(db)
         input_context = await build_agent_input_context(
             agent_config,
             thread_id=thread_id,
             uid=current_uid,
+            global_system_prompt=global_system_prompt,
         )
         latest_run = await run_repo.get_latest_run_by_thread_for_user(thread_id, current_uid)
         if latest_run and isinstance(latest_run.input_payload, dict):

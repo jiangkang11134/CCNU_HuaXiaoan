@@ -11,7 +11,7 @@ from urllib.parse import quote
 import aiofiles
 from fastapi import HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from yuxi.agents.backends.sandbox.paths import _global_user_data_dir, ensure_workspace_default_files
+from yuxi.agents.backends.sandbox.paths import _global_user_data_dir
 from yuxi.services.file_preview import (
     MAX_BINARY_PREVIEW_SIZE_BYTES,
     OfficePreviewConversionError,
@@ -48,7 +48,6 @@ def _workspace_root(user: User) -> Path:
         resolved_root.relative_to(user_data_root)
     except ValueError as exc:
         raise HTTPException(status_code=403, detail="Access denied") from exc
-    ensure_workspace_default_files(resolved_root)
     return resolved_root
 
 

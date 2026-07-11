@@ -43,7 +43,7 @@
             }}</span>
           </a-menu-item>
           <a-menu-divider v-if="userStore.isAdmin" />
-          <a-menu-item v-if="userStore.isSuperAdmin" key="debug" @click="showDebug = true">
+          <a-menu-item v-if="userStore.isAdmin" key="debug" @click="showDebug = true">
             <template #icon><Terminal :size="16" /></template>
             <span class="menu-text">调试面板（非生产环境）</span>
           </a-menu-item>
@@ -104,10 +104,8 @@ defineProps({
 // 用户角色显示文本
 const userRoleText = computed(() => {
   switch (userStore.userRole) {
-    case 'superadmin':
-      return '超级管理员'
-    case 'admin':
-      return '管理员'
+    case 'system_admin':
+      return '系统管理员'
     case 'user':
       return '普通用户'
     default:
@@ -226,12 +224,8 @@ const openProfile = () => {
   bottom: 0;
   border: 2px solid var(--gray-0);
 
-  &.superadmin {
+  &.system-admin {
     background-color: var(--color-warning-500);
-  }
-
-  &.admin {
-    background-color: var(--color-info-500); /* 蓝色，管理员 */
   }
 
   &.user {

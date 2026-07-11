@@ -7,10 +7,12 @@ import {
   Trash2,
   SquarePen,
   Bot,
-  MoreVertical
+  MoreVertical,
+  FilePenLine
 } from 'lucide-vue-next'
 
 import { agentApi } from '@/apis/agent_api'
+import { globalAgentPromptApi } from '@/apis/system_api'
 import AgentEditModal from '@/components/model-management/AgentEditModal.vue'
 import { isBuiltinAgent, useAgentStore } from '@/stores/agent'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
@@ -26,6 +28,13 @@ const searchQuery = ref('')
 const agentBackendOptions = ref([])
 const managedAgents = ref([])
 const agentEditModalRef = ref(null)
+const globalPromptModalOpen = ref(false)
+const globalPromptLoading = ref(false)
+const globalPromptSaving = ref(false)
+const globalPromptForm = ref({
+  enabled: false,
+  prompt: ''
+})
 
 const normalizeAgent = (agent) => {
   const agentId = agent?.agent_id || agent?.slug || agent?.id
@@ -110,6 +119,45 @@ const openEditAgentModal = (agent) => {
   agentEditModalRef.value?.openEdit(agent)
 }
 
+const loadGlobalPromptConfig = async () => {
+  globalPromptLoading.value = true
+  try {
+    const response = await globalAgentPromptApi.getConfig()
+    const data = response?.data || {}
+    globalPromptForm.value = {
+      enabled: data.enabled === true,
+      prompt: typeof data.prompt === 'string' ? data.prompt : ''
+    }
+  } catch (error) {
+    message.error(error.message || '加载全局提示词失败')
+  } finally {
+    globalPromptLoading.value = false
+  }
+}
+
+const openGlobalPromptModal = async () => {
+  globalPromptModalOpen.value = true
+  await loadGlobalPromptConfig()
+}
+
+const saveGlobalPromptConfig = async () => {
+  globalPromptSaving.value = true
+  try {
+    const response = await globalAgentPromptApi.updateConfig(globalPromptForm.value)
+    const data = response?.data || {}
+    globalPromptForm.value = {
+      enabled: data.enabled === true,
+      prompt: typeof data.prompt === 'string' ? data.prompt : ''
+    }
+    message.success('全局提示词已保存')
+    globalPromptModalOpen.value = false
+  } catch (error) {
+    message.error(error.message || '保存全局提示词失败')
+  } finally {
+    globalPromptSaving.value = false
+  }
+}
+
 const refreshAgentLists = async () => {
   await Promise.all([loadAgents(), agentStore.fetchAgents()])
 }
@@ -152,6 +200,10 @@ defineExpose({
   <div class="agent-manage-panel">
     <PageShoulder v-model:search="searchQuery" search-placeholder="搜索智能体...">
       <template #actions>
+        <a-button class="lucide-icon-btn" @click="openGlobalPromptModal">
+          <FilePenLine :size="14" />
+          全局提示词
+        </a-button>
         <a-button type="primary" class="lucide-icon-btn" @click="openCreateAgentModal">
           <Plus :size="14" />
           新增智能体
@@ -244,6 +296,25 @@ defineExpose({
       :backend-options="agentBackendOptions"
       @saved="refreshAgentLists"
     />
+
+    <a-modal
+      v-model:open="globalPromptModalOpen"
+      title="全局智能体提示词"
+      width="720px"
+      :confirm-loading="globalPromptSaving"
+      @ok="saveGlobalPromptConfig"
+    >
+      <a-spin :spinning="globalPromptLoading">
+        <div class="global-prompt-form">
+          <a-checkbox v-model:checked="globalPromptForm.enabled">启用全局提示词</a-checkbox>
+          <a-textarea
+            v-model:value="globalPromptForm.prompt"
+            :auto-size="{ minRows: 10, maxRows: 18 }"
+            placeholder="输入会追加到所有智能体系统提示词后的全局要求"
+          />
+        </div>
+      </a-spin>
+    </a-modal>
   </div>
 </template>
 
@@ -321,6 +392,12 @@ defineExpose({
   justify-content: flex-end;
   width: 100%;
   margin-top: auto;
+}
+
+.global-prompt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .agent-chat-entry {

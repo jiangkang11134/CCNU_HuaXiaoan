@@ -17,9 +17,9 @@ export function getPortalLoginPath(mode = getPortalMode()) {
 }
 
 export function getLandingPathForRole(role) {
-  return role === 'admin' || role === 'superadmin' ? '/back/extensions' : '/front/agent'
+  return role === 'system_admin' ? '/back/extensions' : '/front/agent'
 }
 
 export function isAdminRole(role) {
-  return role === 'admin' || role === 'superadmin'
+  return role === 'system_admin'
 }

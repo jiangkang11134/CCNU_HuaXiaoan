@@ -100,7 +100,7 @@ FACT_VERIFIER_SYSTEM_PROMPT = """你是「事实核查员」子智能体，专�
 - 不要编造来源或链接。"""
 
 ACCESS_LEVELS = SHARE_ACCESS_LEVELS
-ADMIN_ROLES = {"admin", "superadmin"}
+ADMIN_ROLES = {"system_admin"}
 
 
 def is_builtin_agent(agent: Agent) -> bool:
@@ -137,7 +137,7 @@ def normalize_agent_share_config(
 
 
 def user_can_access_agent(user: User, agent: Agent) -> bool:
-    if user.role == "superadmin":
+    if user.role == "system_admin":
         return True
     user_uid = str(user.uid)
     if agent.created_by == user_uid:
@@ -333,7 +333,7 @@ class AgentRepository:
             stmt = stmt.where(Agent.is_subagent.is_(False))
         result = await self.db.execute(stmt.order_by(Agent.is_default.desc(), Agent.id.asc()))
         agents = list(result.scalars().all())
-        if user.role == "superadmin":
+        if user.role == "system_admin":
             return agents
         return [agent for agent in agents if user_can_access_agent(user, agent)]
 
@@ -342,7 +342,7 @@ class AgentRepository:
             select(Agent).where(Agent.is_subagent.is_(True)).order_by(Agent.name.asc(), Agent.id.asc())
         )
         agents = list(result.scalars().all())
-        if user.role == "superadmin":
+        if user.role == "system_admin":
             return agents
         return [agent for agent in agents if user_can_access_agent(user, agent)]
 

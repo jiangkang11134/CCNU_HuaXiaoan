@@ -135,10 +135,8 @@ const avatarDefaultSrc = computed(() => (userStore.uid ? generatePixelAvatar(use
 
 const userRoleText = computed(() => {
   switch (userStore.userRole) {
-    case 'superadmin':
-      return '超级管理员'
-    case 'admin':
-      return '管理员'
+    case 'system_admin':
+      return '系统管理员'
     case 'user':
       return '普通用户'
     default:
@@ -223,9 +221,7 @@ const saveField = async (field) => {
 
 const getRoleColor = (role) => {
   switch (role) {
-    case 'superadmin':
-      return 'var(--color-error-700)'
-    case 'admin':
+    case 'system_admin':
       return 'var(--color-primary-500)'
     case 'user':
       return 'var(--color-success-500)'

@@ -113,7 +113,7 @@ const router = createRouter({
           path: '',
           name: 'ConversationDataComp',
           component: () => import('../views/ConversationDataView.vue'),
-          meta: { keepAlive: false, requiresAuth: true, requiresSuperAdmin: true }
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         }
       ]
     },
@@ -126,7 +126,7 @@ const router = createRouter({
           path: '',
           name: 'DashboardComp',
           component: () => import('../views/DashboardView.vue'),
-          meta: { keepAlive: false, requiresAuth: true, requiresSuperAdmin: true }
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         }
       ]
     },
@@ -212,7 +212,6 @@ router.beforeEach(async (to) => {
   // 检查路由是否需要认证
   const requiresAuth = to.matched.some((record) => record.meta.requiresAuth === true)
   const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
-  const requiresSuperAdmin = to.matched.some((record) => record.meta.requiresSuperAdmin)
   const targetPortal = to.path.startsWith('/back') ? 'back' : 'front'
 
   const userStore = useUserStore()
@@ -230,7 +229,6 @@ router.beforeEach(async (to) => {
 
   const isLoggedIn = userStore.isLoggedIn
   const isAdmin = userStore.isAdmin
-  const isSuperAdmin = userStore.isSuperAdmin
 
   // 如果路由需要认证但用户未登录
   if (requiresAuth && !isLoggedIn) {
@@ -263,20 +261,6 @@ router.beforeEach(async (to) => {
     try {
       const agentStore = useAgentStore()
       // 等待 store 初始化完成
-      if (!agentStore.isInitialized) {
-        await agentStore.initialize()
-      }
-      return '/front/agent'
-    } catch (error) {
-      console.error('获取智能体信息失败:', error)
-      return '/front/agent'
-    }
-  }
-
-  // 如果路由需要超级管理员权限但用户不是超级管理员
-  if (requiresSuperAdmin && !isSuperAdmin) {
-    try {
-      const agentStore = useAgentStore()
       if (!agentStore.isInitialized) {
         await agentStore.initialize()
       }

@@ -48,15 +48,13 @@
         </a-select>
         <a-select v-model:value="userManagement.roleFilter" class="filter-select">
           <a-select-option value="">全部权限</a-select-option>
-          <a-select-option value="superadmin">超级管理员</a-select-option>
-          <a-select-option value="admin">管理员</a-select-option>
+          <a-select-option value="system_admin">系统管理员</a-select-option>
           <a-select-option value="user">普通用户</a-select-option>
         </a-select>
         <a-select v-model:value="userManagement.businessRoleFilter" class="filter-select">
           <a-select-option value="">全部身份</a-select-option>
           <a-select-option value="student">学生</a-select-option>
-          <a-select-option value="faculty">教师</a-select-option>
-          <a-select-option value="workspace_user">工作台用户</a-select-option>
+          <a-select-option value="faculty">教职工</a-select-option>
           <a-select-option value="system_admin">系统管理员</a-select-option>
         </a-select>
       </div>
@@ -96,16 +94,11 @@
                     <div class="name-tag-row">
                       <h4 class="username">{{ user.username }}</h4>
                       <div
-                        v-if="
-                          user.role === 'admin' ||
-                          user.role === 'superadmin' ||
-                          user.department_name
-                        "
+                        v-if="user.role === 'system_admin' || user.department_name"
                         class="role-dept-badge"
                       >
                         <span class="role-icon-wrapper" :class="getRoleClass(user.role)">
-                          <UserLock v-if="user.role === 'superadmin'" :size="14" />
-                          <UserStar v-else-if="user.role === 'admin'" :size="14" />
+                          <UserLock v-if="user.role === 'system_admin'" :size="14" />
                           <User v-else :size="14" />
                         </span>
                         <span v-if="user.department_name" class="dept-text">
@@ -226,7 +219,7 @@
             :maxlength="20"
           />
           <div class="help-text">
-            学生和教师使用学工号登录；工作台用户和管理员使用 UID 登录。
+            学生和教职工使用学工号登录；系统管理员使用 UID 登录。
           </div>
         </a-form-item>
 
@@ -266,37 +259,27 @@
           </a-form-item>
         </template>
 
-        <a-form-item
-          v-if="userManagement.editMode && userManagement.form.role === 'superadmin'"
-          label="角色"
-          class="form-item"
-        >
-          <a-input value="超级管理员" disabled />
-          <div class="help-text">超级管理员账户无法修改角色</div>
-        </a-form-item>
-        <a-form-item v-else label="角色" class="form-item">
-          <a-select v-model:value="userManagement.form.role">
+        <a-form-item label="用户类型" class="form-item">
+          <a-select v-model:value="userManagement.form.role" :disabled="userManagement.form.isBuiltin">
             <a-select-option value="user">普通用户</a-select-option>
-            <a-select-option value="admin" v-if="userStore.isSuperAdmin">管理员</a-select-option>
+            <a-select-option value="system_admin">系统管理员</a-select-option>
           </a-select>
         </a-form-item>
 
-        <a-form-item label="业务身份" class="form-item">
+        <a-form-item label="身份" class="form-item">
           <a-select
             v-model:value="userManagement.form.businessRole"
             :disabled="userManagement.form.role !== 'user'"
           >
             <a-select-option value="student">学生</a-select-option>
-            <a-select-option value="faculty">教师</a-select-option>
-            <a-select-option value="workspace_user">工作台用户</a-select-option>
+            <a-select-option value="faculty">教职工</a-select-option>
             <a-select-option value="system_admin" v-if="userManagement.form.role !== 'user'">
               系统管理员
             </a-select-option>
           </a-select>
         </a-form-item>
 
-        <!-- 部门选择器（仅超级管理员可见） -->
-        <a-form-item v-if="userStore.isSuperAdmin" label="部门" class="form-item">
+        <a-form-item v-if="userStore.isAdmin" label="部门" class="form-item">
           <a-select v-model:value="userManagement.form.departmentId" placeholder="请选择部门">
             <a-select-option
               v-for="dept in departmentManagement.departments"
@@ -323,7 +306,6 @@ import {
   Trash2,
   User,
   UserLock,
-  UserStar,
   RefreshCw,
   Search,
   MoreVertical
@@ -358,6 +340,7 @@ const userManagement = reactive({
     password: '',
     confirmPassword: '',
     role: 'user', // 默认角色
+    originalRole: 'user',
     businessRole: 'student',
     departmentId: null, // 部门ID
     isBuiltin: false,
@@ -367,7 +350,7 @@ const userManagement = reactive({
   displayPasswordFields: true // 编辑时是否显示密码字段
 })
 
-// 部门列表（仅超级管理员使用）
+// 部门列表
 const departmentManagement = reactive({
   departments: []
 })
@@ -415,7 +398,8 @@ const filteredUsers = computed(() => {
     const matchesDepartment =
       !userManagement.departmentFilter ||
       String(user.department_id ?? user.department_name ?? '') === userManagement.departmentFilter
-    const matchesRole = !userManagement.roleFilter || user.role === userManagement.roleFilter
+    const displayRole = getDisplayRoleValue(user.role)
+    const matchesRole = !userManagement.roleFilter || displayRole === userManagement.roleFilter
     const matchesBusinessRole =
       !userManagement.businessRoleFilter || user.business_role === userManagement.businessRoleFilter
 
@@ -435,7 +419,6 @@ const paginatedUsers = computed(() => {
 
 // 获取部门列表
 const fetchDepartments = async () => {
-  if (!userStore.isSuperAdmin) return // 普通管理员不需要获取所有部门列表
   try {
     const departments = await departmentApi.getDepartments()
     departmentManagement.departments = departments
@@ -546,23 +529,18 @@ const getUserDefaultAvatarSrc = (user) => (user.uid ? generatePixelAvatar(user.u
 
 const isUserDeleteDisabled = (user) =>
   user.id === userStore.userId ||
-  user.is_builtin ||
-  (user.role === 'superadmin' && userStore.userRole !== 'superadmin')
+  user.is_builtin
 
 const getRoleLabel = (role) => {
-  const roleMap = {
-    superadmin: '超级管理员',
-    admin: '管理员',
-    user: '普通用户'
-  }
-  return roleMap[role] || role || '-'
+  return getDisplayRoleValue(role) === 'system_admin' ? '系统管理员' : '普通用户'
 }
+
+const getDisplayRoleValue = (role) => (role === 'system_admin' ? 'system_admin' : 'user')
 
 const getBusinessRoleLabel = (businessRole) => {
   const roleMap = {
     student: '学生',
-    faculty: '教师',
-    workspace_user: '工作台用户',
+    faculty: '教职工',
     system_admin: '系统管理员'
   }
   return roleMap[businessRole] || businessRole || '-'
@@ -611,6 +589,7 @@ const showAddUserModal = () => {
     password: '',
     confirmPassword: '',
     role: 'user', // 默认角色为普通用户
+    originalRole: 'user',
     businessRole: 'student',
     departmentId: null,
     isBuiltin: false,
@@ -633,7 +612,8 @@ const showEditUserModal = (user) => {
     phoneNumber: user.phone_number || '',
     password: '',
     confirmPassword: '',
-    role: user.role,
+    role: getDisplayRoleValue(user.role),
+    originalRole: user.role,
     businessRole: user.business_role || (user.role === 'user' ? 'student' : 'system_admin'),
     departmentId: user.department_id || null,
     isBuiltin: Boolean(user.is_builtin),
@@ -668,11 +648,11 @@ const handleUserFormSubmit = async () => {
       return
     }
     if (isFrontendBusinessRole.value && !/^\d{1,12}$/.test(nextUid)) {
-      message.error('学生和教师的学工号必须为不超过12位数字')
+      message.error('学生和教职工的学工号必须为不超过12位数字')
       return
     }
     if (!isFrontendBusinessRole.value && !/^[A-Za-z0-9_]{3,20}$/.test(nextUid)) {
-      message.error('工作台用户和管理员 UID 只能包含3-20位字母、数字或下划线')
+      message.error('系统管理员 UID 只能包含3-20位字母、数字或下划线')
       return
     }
 
@@ -695,6 +675,10 @@ const handleUserFormSubmit = async () => {
     }
 
     userManagement.loading = true
+    const submitRole =
+      userManagement.form.isBuiltin && userManagement.form.originalRole
+        ? userManagement.form.originalRole
+        : userManagement.form.role
 
     // 根据模式决定创建还是更新用户
     if (userManagement.editMode) {
@@ -702,8 +686,8 @@ const handleUserFormSubmit = async () => {
       const updateData = {
         username: userManagement.form.username.trim(),
         uid: nextUid,
-        role: userManagement.form.role,
-        business_role: userManagement.form.role === 'user' ? userManagement.form.businessRole : 'system_admin'
+        role: submitRole,
+        business_role: submitRole === 'user' ? userManagement.form.businessRole : 'system_admin'
       }
 
       // 添加手机号字段
@@ -711,8 +695,7 @@ const handleUserFormSubmit = async () => {
         updateData.phone_number = userManagement.form.phoneNumber
       }
 
-      // 超级管理员可以修改部门
-      if (userStore.isSuperAdmin && userManagement.form.departmentId) {
+      if (userStore.isAdmin && userManagement.form.departmentId) {
         updateData.department_id = userManagement.form.departmentId
       }
 
@@ -729,12 +712,11 @@ const handleUserFormSubmit = async () => {
         username: userManagement.form.username.trim(),
         uid: nextUid,
         password: userManagement.form.password,
-        role: userManagement.form.role,
-        business_role: userManagement.form.role === 'user' ? userManagement.form.businessRole : 'system_admin'
+        role: submitRole,
+        business_role: submitRole === 'user' ? userManagement.form.businessRole : 'system_admin'
       }
 
-      // 超级管理员可以指定部门
-      if (userStore.isSuperAdmin && userManagement.form.departmentId) {
+      if (userStore.isAdmin && userManagement.form.departmentId) {
         createData.department_id = userManagement.form.departmentId
       }
 
@@ -792,10 +774,8 @@ const confirmDeleteUser = (user) => {
 
 const getRoleClass = (role) => {
   switch (role) {
-    case 'superadmin':
-      return 'role-superadmin'
-    case 'admin':
-      return 'role-admin'
+    case 'system_admin':
+      return 'role-system-admin'
     case 'user':
       return 'role-user'
     default:
@@ -869,15 +849,14 @@ onMounted(async () => {
   }
 
   .filter-section {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     margin-bottom: 16px;
-    flex-wrap: wrap;
 
     .search-input {
-      width: 300px;
+      width: 100%;
       max-width: 100%;
 
       :deep(.ant-input-prefix) {
@@ -891,7 +870,7 @@ onMounted(async () => {
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
-      margin-left: auto;
+      min-width: 0;
     }
 
     .filter-select {
@@ -901,6 +880,7 @@ onMounted(async () => {
 
   @media (max-width: 640px) {
     .filter-section {
+      grid-template-columns: 1fr;
       align-items: stretch;
 
       .search-input,
@@ -1020,10 +1000,7 @@ onMounted(async () => {
                       width: 16px;
                       height: 16px;
 
-                      &.role-superadmin {
-                        color: var(--color-error-700);
-                      }
-                      &.role-admin {
+                      &.role-system-admin {
                         color: var(--color-info-700);
                       }
                       &.role-user {

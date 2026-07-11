@@ -390,6 +390,8 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS skills ADD COLUMN IF NOT EXISTS content_hash VARCHAR(128)",
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS business_role VARCHAR(32) NOT NULL DEFAULT 'student'",
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_builtin BOOLEAN NOT NULL DEFAULT FALSE",
+            "UPDATE users SET role = 'system_admin', business_role = 'system_admin' WHERE role IN ('admin', 'superadmin')",
+            "UPDATE users SET business_role = 'student' WHERE role = 'user' AND business_role NOT IN ('student', 'faculty')",
             "CREATE INDEX IF NOT EXISTS ix_users_is_builtin ON users(is_builtin)",
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS mcp_servers ADD COLUMN IF NOT EXISTS env JSONB",
@@ -736,8 +738,8 @@ class PostgresManager(metaclass=SingletonMeta):
                 if unbound_keys_count > 0:
                     logger.warning(
                         f"Schema migration will delete {unbound_keys_count} unbound API key(s) "
-                        "(user_id IS NULL). These keys were previously allowed via dept-admin/superadmin "
-                        "fallback and will stop authenticating after this migration."
+                        "(user_id IS NULL). These keys are invalid in the current single-admin permission model "
+                        "and will stop authenticating after this migration."
                     )
             except Exception as exc:
                 logger.warning(f"Failed to count unbound api_keys before migration: {exc}")

@@ -206,7 +206,7 @@ class KnowledgeBaseManager:
 
     @staticmethod
     def _database_info_accessible(user: dict, db_info: dict) -> bool:
-        if user.get("role") == "superadmin":
+        if user.get("role") == "system_admin":
             return True
 
         user_uid = str(user.get("uid") or "")
@@ -243,8 +243,8 @@ class KnowledgeBaseManager:
         Returns:
             bool: 是否有权限
         """
-        # 超级管理员有权访问所有
-        if user.get("role") == "superadmin":
+        # 系统管理员有权访问所有
+        if user.get("role") == "system_admin":
             return True
 
         from yuxi.repositories.knowledge_base_repository import KnowledgeBaseRepository
@@ -293,8 +293,8 @@ class KnowledgeBaseManager:
 
         all_databases = (await self.get_databases()).get("databases", [])
 
-        # 超级管理员可以看到所有知识库
-        if user_info.get("role") == "superadmin":
+        # 系统管理员可以看到所有知识库
+        if user_info.get("role") == "system_admin":
             return {"databases": all_databases}
 
         filtered_databases = [

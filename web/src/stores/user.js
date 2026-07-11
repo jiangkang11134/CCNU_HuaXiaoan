@@ -18,8 +18,7 @@ export const useUserStore = defineStore('user', () => {
 
   // 计算属性
   const isLoggedIn = computed(() => !!token.value)
-  const isAdmin = computed(() => userRole.value === 'admin' || userRole.value === 'superadmin')
-  const isSuperAdmin = computed(() => userRole.value === 'superadmin')
+  const isAdmin = computed(() => userRole.value === 'system_admin')
   const isChatOnlyUser = computed(() => isLoggedIn.value && !isAdmin.value)
 
   // 动作
@@ -120,14 +119,14 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('user_token')
   }
 
-  async function initialize(admin) {
+  async function initialize(adminData) {
     try {
       const response = await fetch('/api/auth/initialize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(admin)
+        body: JSON.stringify(adminData)
       })
 
       if (!response.ok) {
@@ -409,7 +408,6 @@ export const useUserStore = defineStore('user', () => {
     // 计算属性
     isLoggedIn,
     isAdmin,
-    isSuperAdmin,
     isChatOnlyUser,
 
     // 方法
@@ -437,10 +435,4 @@ export const checkAdminPermission = () => {
     throw new Error('需要管理员权限')
   }
   return true
-}
-
-// 检查当前用户是否有超级管理员权限
-export const checkSuperAdminPermission = () => {
-  const userStore = useUserStore()
-  return userStore.isSuperAdmin
 }
