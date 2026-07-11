@@ -58,10 +58,15 @@
           开始识别
         </a-button>
 
-        <div v-if="recognitionResult || recognitionError" class="inline-result" aria-label="识别结果">
-          <div class="inline-result-header">
-            <ShieldCheck :size="17" />
-            <span>识别结果</span>
+      </section>
+
+      <div class="side-stack">
+        <section class="result-panel" aria-label="识别结果">
+          <div class="section-title-row">
+            <div class="section-title">
+              <ShieldCheck :size="18" />
+              <span>识别结果</span>
+            </div>
           </div>
           <a-alert
             v-if="recognitionError"
@@ -69,24 +74,32 @@
             show-icon
             :message="recognitionError"
           />
-          <div v-else class="result-content">{{ recognitionResult }}</div>
-        </div>
-      </section>
+          <div v-else-if="recognitionResult" class="result-content">{{ recognitionResult }}</div>
+          <div v-else class="result-empty">
+            <ShieldCheck :size="34" />
+            <span>上传现场图片并点击识别后，结果会显示在这里。</span>
+          </div>
+        </section>
 
-      <section class="criteria-panel" aria-label="识别维度">
-        <h2>识别维度</h2>
-        <div class="criteria-grid">
-          <div v-for="item in criteriaItems" :key="item.title" class="criteria-item">
-            <component :is="item.icon" :size="18" />
-            <div>
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.description }}</span>
+        <section class="criteria-panel" aria-label="识别维度">
+          <div class="section-title-row">
+            <div class="section-title">
+              <AlertTriangle :size="18" />
+              <span>识别维度</span>
             </div>
           </div>
-        </div>
-      </section>
+          <div class="criteria-grid">
+            <div v-for="item in criteriaItems" :key="item.title" class="criteria-item">
+              <component :is="item.icon" :size="18" />
+              <div>
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.description }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
-
   </div>
 </template>
 
@@ -207,27 +220,34 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: var(--main-0);
+  background: var(--gray-10);
   overflow-y: auto;
 }
 
 .lab-safety-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: min(460px, calc(100% - 36px));
+  display: grid;
+  grid-template-columns: minmax(360px, 480px) minmax(420px, 1fr);
+  align-items: start;
+  gap: 16px;
+  width: min(1120px, calc(100% - 48px));
   min-height: 0;
   margin: 0 auto;
-  padding: 18px;
+  padding: 28px 0;
   background: var(--gray-10);
 }
 
 .inspection-panel,
+.result-panel,
 .criteria-panel {
   border: 1px solid var(--gray-100);
   border-radius: 8px;
   background: var(--main-0);
-  padding: 16px;
+  padding: 18px;
+}
+
+.side-stack {
+  display: grid;
+  gap: 16px;
 }
 
 .panel-header {
@@ -334,33 +354,25 @@ onBeforeUnmount(() => {
   margin: 14px 0;
 }
 
-.criteria-panel {
-  h2 {
-    margin: 0 0 12px;
-    color: var(--gray-900);
-    font-size: 15px;
-    font-weight: 650;
-  }
-}
-
 .criteria-grid {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.inline-result {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--gray-100);
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
 }
 
-.inline-result-header {
+.section-title {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 10px;
+  gap: 8px;
   color: var(--gray-900);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 650;
 }
 
@@ -370,9 +382,25 @@ onBeforeUnmount(() => {
   background: var(--gray-25);
   border: 1px solid var(--gray-100);
   border-radius: 8px;
-  padding: 12px;
+  min-height: 288px;
+  padding: 14px;
   font-size: 13px;
   line-height: 1.75;
+}
+
+.result-empty {
+  display: flex;
+  min-height: 288px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px dashed var(--gray-200);
+  border-radius: 8px;
+  color: var(--gray-500);
+  background: var(--gray-25);
+  text-align: center;
+  font-size: 13px;
 }
 
 .criteria-item {
@@ -401,7 +429,13 @@ onBeforeUnmount(() => {
 
 @media (max-width: 980px) {
   .lab-safety-panel {
+    grid-template-columns: 1fr;
     width: 100%;
+    padding: 16px;
+  }
+
+  .criteria-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
