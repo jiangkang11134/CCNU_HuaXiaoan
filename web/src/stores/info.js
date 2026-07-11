@@ -40,6 +40,23 @@ export const useInfoStore = defineStore('info', () => {
 
   const frontend = computed(() => infoConfig.value.frontend || {})
 
+  function applyBrowserChrome(config) {
+    if (config.frontend?.browser_title) {
+      document.title = config.frontend.browser_title
+    }
+
+    const browserIcon = config.organization?.avatar || config.organization?.logo
+    if (browserIcon) {
+      let iconLink = document.querySelector('link[rel="icon"]')
+      if (!iconLink) {
+        iconLink = document.createElement('link')
+        iconLink.setAttribute('rel', 'icon')
+        document.head.appendChild(iconLink)
+      }
+      iconLink.setAttribute('href', browserIcon)
+    }
+  }
+
   // 动作方法
   function setInfoConfig(newConfig) {
     infoConfig.value = newConfig
@@ -62,9 +79,7 @@ export const useInfoStore = defineStore('info', () => {
 
       if (response.success && response.data) {
         setInfoConfig(response.data)
-        if (response.data.frontend?.browser_title) {
-          document.title = response.data.frontend.browser_title
-        }
+        applyBrowserChrome(response.data)
         console.debug('信息配置加载成功:', response.data)
         return response.data
       } else {

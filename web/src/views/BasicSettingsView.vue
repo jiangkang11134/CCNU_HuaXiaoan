@@ -36,6 +36,7 @@ const isSaving = ref(false)
 
 const settingTabs = [
   { key: 'defaults', label: '默认项配置' },
+  { key: 'parsing', label: '解析配置' },
   { key: 'contentGuard', label: '内容审查配置' }
 ]
 

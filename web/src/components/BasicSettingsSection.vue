@@ -47,121 +47,125 @@
               </div>
             </div>
           </div>
-          <div class="setting-row two-cols">
-            <div class="col-item">
-              <div class="setting-label">
-                {{ items?.default_ocr_engine?.des || '默认 OCR 解析引擎' }}
-              </div>
-              <div class="setting-content">
-                <a-select
-                  :value="draft.default_ocr_engine"
-                  @update:value="setDraftValue('default_ocr_engine', $event)"
-                  class="full-width"
-                >
-                  <a-select-option
-                    v-for="option in ocrEngineOptions"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </a-select-option>
-                </a-select>
-              </div>
-            </div>
-          </div>
-          <div class="section-title inline-title">运行时服务配置</div>
-          <div class="setting-row two-cols">
-            <div class="col-item">
-              <div class="setting-label">Tavily 网页搜索 API Key</div>
-              <div class="setting-content">
-                <a-input-password
-                  :value="secretDrafts.tavily_api_key"
-                  :placeholder="secretPlaceholder('tavily_api_key')"
-                  @update:value="setSecretDraft('tavily_api_key', $event)"
-                />
-              </div>
-            </div>
-            <div class="col-item">
-              <div class="setting-label">URL 解析白名单</div>
-              <div class="setting-content">
-                <a-textarea
-                  :value="urlWhitelistText"
-                  :auto-size="{ minRows: 1, maxRows: 4 }"
-                  placeholder="每行或逗号分隔一个域名"
-                  @update:value="setUrlWhitelistText"
-                />
-              </div>
-            </div>
-          </div>
-          <div class="setting-row two-cols">
-            <div class="col-item">
-              <div class="setting-label">MinerU 官方 API Key</div>
-              <div class="setting-content">
-                <a-input-password
-                  :value="secretDrafts.mineru_api_key"
-                  :placeholder="secretPlaceholder('mineru_api_key')"
-                  @update:value="setSecretDraft('mineru_api_key', $event)"
-                />
-              </div>
-            </div>
-            <div class="col-item">
-              <div class="setting-label">MinerU 官方 API 基础地址</div>
-              <div class="setting-content">
-                <a-input
-                  :value="draft.mineru_api_uri"
-                  placeholder="https://mineru.net/api/v4"
-                  @update:value="setDraftValue('mineru_api_uri', $event)"
-                />
-              </div>
-            </div>
-          </div>
-          <div class="setting-row two-cols">
-            <div class="col-item">
-              <div class="setting-label">MinerU 超时时间（秒）</div>
-              <div class="setting-content">
-                <a-input-number
-                  :value="draft.mineru_timeout_seconds"
-                  :min="1"
-                  class="full-width"
-                  @update:value="setDraftValue('mineru_timeout_seconds', $event)"
-                />
-              </div>
-            </div>
-            <div class="col-item">
-              <div class="setting-label">PaddleOCR API Token</div>
-              <div class="setting-content">
-                <a-input-password
-                  :value="secretDrafts.paddleocr_api_token"
-                  :placeholder="secretPlaceholder('paddleocr_api_token')"
-                  @update:value="setSecretDraft('paddleocr_api_token', $event)"
-                />
-              </div>
-            </div>
-          </div>
-          <div class="setting-row two-cols">
-            <div class="col-item">
-              <div class="setting-label">PaddleOCR 任务地址</div>
-              <div class="setting-content">
-                <a-input
-                  :value="draft.paddleocr_api_url"
-                  @update:value="setDraftValue('paddleocr_api_url', $event)"
-                />
-              </div>
-            </div>
-            <div class="col-item">
-              <div class="setting-label">DeepSeek OCR API Key</div>
-              <div class="setting-content">
-                <a-input-password
-                  :value="secretDrafts.deepseek_ocr_api_key"
-                  :placeholder="secretPlaceholder('deepseek_ocr_api_key')"
-                  @update:value="setSecretDraft('deepseek_ocr_api_key', $event)"
-                />
-              </div>
-            </div>
-          </div>
         </template>
       </div>
 
+    </template>
+
+    <template v-if="userStore.isAdmin && activeSection === 'parsing'">
+      <div class="settings-panel">
+        <div class="setting-row two-cols">
+          <div class="col-item">
+            <div class="setting-label">
+              {{ items?.default_ocr_engine?.des || '默认 OCR 解析引擎' }}
+            </div>
+            <div class="setting-content">
+              <a-select
+                :value="draft.default_ocr_engine"
+                @update:value="setDraftValue('default_ocr_engine', $event)"
+                class="full-width"
+              >
+                <a-select-option
+                  v-for="option in ocrEngineOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </a-select-option>
+              </a-select>
+            </div>
+          </div>
+          <div class="col-item">
+            <div class="setting-label">URL 解析白名单</div>
+            <div class="setting-content">
+              <a-textarea
+                :value="urlWhitelistText"
+                :auto-size="{ minRows: 1, maxRows: 4 }"
+                placeholder="每行或逗号分隔一个域名"
+                @update:value="setUrlWhitelistText"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="setting-row two-cols">
+          <div class="col-item">
+            <div class="setting-label">Tavily 网页搜索 API Key</div>
+            <div class="setting-content">
+              <a-input-password
+                :value="secretDrafts.tavily_api_key"
+                :placeholder="secretPlaceholder('tavily_api_key')"
+                @update:value="setSecretDraft('tavily_api_key', $event)"
+              />
+            </div>
+          </div>
+          <div class="col-item">
+            <div class="setting-label">MinerU 官方 API Key</div>
+            <div class="setting-content">
+              <a-input-password
+                :value="secretDrafts.mineru_api_key"
+                :placeholder="secretPlaceholder('mineru_api_key')"
+                @update:value="setSecretDraft('mineru_api_key', $event)"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="setting-row two-cols">
+          <div class="col-item">
+            <div class="setting-label">MinerU 官方 API 基础地址</div>
+            <div class="setting-content">
+              <a-input
+                :value="draft.mineru_api_uri"
+                placeholder="https://mineru.net/api/v4"
+                @update:value="setDraftValue('mineru_api_uri', $event)"
+              />
+            </div>
+          </div>
+          <div class="col-item">
+            <div class="setting-label">MinerU 超时时间（秒）</div>
+            <div class="setting-content">
+              <a-input-number
+                :value="draft.mineru_timeout_seconds"
+                :min="1"
+                class="full-width"
+                @update:value="setDraftValue('mineru_timeout_seconds', $event)"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="setting-row two-cols">
+          <div class="col-item">
+            <div class="setting-label">PaddleOCR API Token</div>
+            <div class="setting-content">
+              <a-input-password
+                :value="secretDrafts.paddleocr_api_token"
+                :placeholder="secretPlaceholder('paddleocr_api_token')"
+                @update:value="setSecretDraft('paddleocr_api_token', $event)"
+              />
+            </div>
+          </div>
+          <div class="col-item">
+            <div class="setting-label">PaddleOCR 任务地址</div>
+            <div class="setting-content">
+              <a-input
+                :value="draft.paddleocr_api_url"
+                @update:value="setDraftValue('paddleocr_api_url', $event)"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="setting-row two-cols">
+          <div class="col-item">
+            <div class="setting-label">DeepSeek OCR API Key</div>
+            <div class="setting-content">
+              <a-input-password
+                :value="secretDrafts.deepseek_ocr_api_key"
+                :placeholder="secretPlaceholder('deepseek_ocr_api_key')"
+                @update:value="setSecretDraft('deepseek_ocr_api_key', $event)"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
 
     <template v-if="userStore.isAdmin && activeSection === 'contentGuard'">

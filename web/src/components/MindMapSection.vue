@@ -148,12 +148,7 @@ const loadMindmap = async () => {
     }
 
     if (mindmap) {
-      await nextTick()
-
-      // 延迟渲染，确保DOM完全更新
-      setTimeout(() => {
-        renderMindmap(mindmap)
-      }, 100)
+      await renderMindmap(mindmap)
     }
 
     await checkMindmapDiff()
@@ -192,14 +187,10 @@ const generateMindmap = async () => {
 
     mindmapData.value = response.mindmap
 
-    // 等待DOM更新
-    await nextTick()
-
-    // 再延迟一点，确保SVG元素完全渲染
-    setTimeout(() => {
-      renderMindmap(response.mindmap)
+    const rendered = await renderMindmap(response.mindmap)
+    if (rendered) {
       message.success('思维导图生成成功！')
-    }, 100)
+    }
 
     await checkMindmapDiff()
   } catch (error) {
@@ -250,16 +241,14 @@ const incrementalUpdate = async () => {
 
     mindmapData.value = response.mindmap
 
-    await nextTick()
-
-    setTimeout(() => {
-      renderMindmap(response.mindmap)
+    const rendered = await renderMindmap(response.mindmap)
+    if (rendered) {
       if (response.no_ai_needed) {
         message.success('思维导图已更新（自动清理已删除文件）')
       } else {
         message.success('增量更新完成！')
       }
-    }, 100)
+    }
 
     await checkMindmapDiff()
   } catch (error) {
@@ -300,6 +289,17 @@ const ensureSvgViewportSize = () => {
   svg.setAttribute('width', `${Math.round(width)}`)
   svg.setAttribute('height', `${Math.round(height)}`)
   return true
+}
+
+const waitForSvgReady = async (maxAttempts = 10) => {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await nextTick()
+    if (ensureSvgViewportSize()) {
+      return true
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 80))
+  }
+  return false
 }
 
 const createSvgElement = (tagName) => document.createElementNS(SVG_NS, tagName)
@@ -452,21 +452,13 @@ const patchSafariTextFallback = () => {
 /**
  * 渲染思维导图
  */
-const renderMindmap = async (data, retryCount = 0) => {
-  if (!data) return
+const renderMindmap = async (data) => {
+  if (!data) return false
 
-  if (!mindmapSvg.value || !ensureSvgViewportSize()) {
-    // 如果SVG或尺寸还没准备好，最多重试3次
-    if (retryCount < 3) {
-      setTimeout(() => {
-        renderMindmap(data, retryCount + 1)
-      }, 100)
-      return
-    } else {
-      console.error('无法获取SVG容器，渲染失败')
-      message.error('渲染失败：无法找到SVG容器')
-      return
-    }
+  if (!(await waitForSvgReady())) {
+    console.error('无法获取SVG容器，渲染失败')
+    message.error('渲染失败：无法找到SVG容器')
+    return false
   }
 
   try {
@@ -504,9 +496,11 @@ const renderMindmap = async (data, retryCount = 0) => {
         markmapInstance.fit()
       }
     }, 300)
+    return true
   } catch (error) {
     console.error('渲染思维导图失败:', error)
     message.error('渲染失败: ' + error.message)
+    return false
   }
 }
 
