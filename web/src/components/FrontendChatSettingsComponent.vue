@@ -1,6 +1,6 @@
 <template>
   <div class="frontend-chat-settings">
-    <a-spin :spinning="loading">
+    <a-spin v-if="hasLoaded" :spinning="loading">
       <div class="settings-form-grid">
         <a-card v-if="activeSection === 'branding'" size="small" title="品牌展示" :bordered="true">
           <a-form layout="vertical">
@@ -120,6 +120,9 @@
         </a-card>
       </div>
     </a-spin>
+    <div v-else class="config-loading-state">
+      <a-spin />
+    </div>
   </div>
 </template>
 
@@ -162,6 +165,9 @@ const DEFAULT_CONFIG = {
   agent_options: []
 }
 
+const ALLOWED_ASSET_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'])
+const MAX_ASSET_SIZE_BYTES = 5 * 1024 * 1024
+
 const inputSwitches = [
   { key: 'show_agent_selector', label: '智能体选择' },
   { key: 'show_model_selector', label: '模型选择' },
@@ -172,7 +178,8 @@ const inputSwitches = [
   { key: 'show_send_button', label: '发送按钮' }
 ]
 
-const loading = ref(false)
+const loading = ref(true)
+const hasLoaded = ref(false)
 const saving = ref(false)
 const uploadingAsset = reactive({
   organization_avatar: false,
@@ -210,6 +217,7 @@ const loadConfig = async () => {
     message.error(error.message || '前端配置加载失败')
   } finally {
     loading.value = false
+    hasLoaded.value = true
   }
 }
 
@@ -230,6 +238,19 @@ const saveConfig = async () => {
 }
 
 const createAssetUploadRequest = (key) => async ({ file, onSuccess, onError }) => {
+  if (!ALLOWED_ASSET_TYPES.has(file.type)) {
+    const error = new Error('仅支持 jpg、png、webp、gif、svg 图片')
+    message.error(error.message)
+    onError?.(error)
+    return
+  }
+  if (file.size > MAX_ASSET_SIZE_BYTES) {
+    const error = new Error('图片大小不能超过 5MB')
+    message.error(error.message)
+    onError?.(error)
+    return
+  }
+
   uploadingAsset[key] = true
   try {
     const response = await frontendChatConfigApi.uploadAsset(file)
@@ -262,7 +283,9 @@ onMounted(loadConfig)
 
 defineExpose({
   saveConfig,
-  saving
+  saving,
+  loading,
+  hasLoaded
 })
 </script>
 

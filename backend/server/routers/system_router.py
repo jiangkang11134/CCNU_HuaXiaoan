@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import config, get_version
 from yuxi.storage.postgres.models_business import SystemKV, User
-from yuxi.utils.upload_utils import write_upload_to_path
+from yuxi.utils.upload_utils import read_upload_with_limit
 from yuxi.utils.logging_config import logger
 
 from server.utils.auth_middleware import get_admin_user, get_db, get_required_user
@@ -206,16 +206,22 @@ async def upload_frontend_asset(
     storage_name = f"{uuid.uuid4().hex}{suffix}"
     target_path = _resolve_frontend_asset_path(storage_name)
     try:
-        await write_upload_to_path(
+        content = await read_upload_with_limit(
             file,
-            target_path,
             max_size_bytes=FRONTEND_ASSET_MAX_SIZE_BYTES,
             too_large_message="图片大小不能超过 5MB",
         )
+        async with aiofiles.open(target_path, "wb") as output_file:
+            await output_file.write(content)
     except ValueError as exc:
         if target_path.exists():
             target_path.unlink()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        logger.error("前端资源图片保存失败: %s", exc)
+        if target_path.exists():
+            target_path.unlink()
+        raise HTTPException(status_code=500, detail="图片保存失败，请检查服务端存储目录") from exc
 
     return {"success": True, "data": {"url": f"/api/system/frontend-assets/{storage_name}"}}
 

@@ -11,6 +11,7 @@
         <a-button
           type="primary"
           :loading="frontendConfigRef?.saving"
+          :disabled="!frontendConfigRef?.hasLoaded || frontendConfigRef?.loading"
           @click="frontendConfigRef?.saveConfig()"
         >
           保存配置

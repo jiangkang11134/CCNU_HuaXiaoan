@@ -60,9 +60,22 @@ export const frontendChatConfigApi = {
   getConfig: async () => apiGet('/api/system/frontend-chat-config'),
   updateConfig: async (payload) => apiAdminPut('/api/system/frontend-chat-config', payload),
   uploadAsset: async (file) => {
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 30000)
     const formData = new FormData()
     formData.append('file', file)
-    return apiAdminPost('/api/system/frontend-assets', formData)
+    try {
+      return await apiAdminPost('/api/system/frontend-assets', formData, {
+        signal: controller.signal
+      })
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw new Error('图片上传超时，请检查网络或图片大小后重试')
+      }
+      throw error
+    } finally {
+      window.clearTimeout(timeoutId)
+    }
   }
 }
 
