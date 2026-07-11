@@ -97,23 +97,6 @@ const router = createRouter({
       ]
     },
     {
-      path: '/workspace',
-      redirect: '/back/workspace'
-    },
-    {
-      path: '/back/workspace',
-      name: 'workspace',
-      component: AppLayout,
-      children: [
-        {
-          path: '',
-          name: 'WorkspaceComp',
-          component: () => import('../views/WorkspaceView.vue'),
-          meta: { keepAlive: true, requiresAuth: true }
-        }
-      ]
-    },
-    {
       path: '/dashboard',
       redirect: '/back/dashboard'
     },

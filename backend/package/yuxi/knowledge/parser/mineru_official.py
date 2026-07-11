@@ -13,6 +13,7 @@ from typing import Any
 
 import requests
 
+from yuxi import config
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
 from yuxi.knowledge.parser.zip_utils import process_zip_file_sync
 from yuxi.utils import hashstr, logger
@@ -22,9 +23,9 @@ class MinerUOfficialParser(BaseDocumentProcessor):
     """MinerU 官方 API 解析器"""
 
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.getenv("MINERU_API_KEY")
+        self.api_key = api_key or config.mineru_api_key or os.getenv("MINERU_API_KEY")
         if not self.api_key:
-            raise DocumentParserException("MINERU_API_KEY 环境变量未设置", "mineru_official", "missing_api_key")
+            raise DocumentParserException("MinerU 官方 API Key 未配置", "mineru_official", "missing_api_key")
 
         self.api_base = "https://mineru.net/api/v4"
         self.headers = {

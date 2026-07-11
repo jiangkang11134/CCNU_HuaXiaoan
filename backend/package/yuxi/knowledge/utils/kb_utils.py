@@ -1,5 +1,7 @@
 import hashlib
+import re
 import time
+from urllib.parse import unquote, urlsplit
 
 from yuxi import config
 from yuxi.knowledge.chunking.ragflow_like.presets import resolve_chunk_processing_params
@@ -13,6 +15,8 @@ _DROPPED_PROCESSING_PARAM_KEYS = {
     "file_sizes",
     "enable_ocr",
 }
+
+_UPLOAD_TIMESTAMP_PATTERN = re.compile(r"^(.+)_(\d{13})(\.[^.]+)$")
 
 
 def sanitize_processing_params(params: dict | None) -> dict | None:
@@ -109,19 +113,7 @@ async def prepare_item_metadata(item: str, content_type: str, kb_id: str, params
             raise ValueError(f"File source must be a MinIO URL: {item}")
 
         logger.debug(f"Processing MinIO file: {item}")
-        _, object_name = parse_minio_url(item)
-        filename = object_name.rsplit("/", 1)[-1]
-
-        import re
-
-        timestamp_pattern = r"^(.+)_(\d{13})(\.[^.]+)$"
-        match = re.match(timestamp_pattern, filename)
-        filename_display = match.group(1) + match.group(3) if match else filename
-        source_path = _normalize_source_path(params.get("source_path")) if params else None
-        if source_path:
-            filename_display = source_path
-
-        file_type = filename_display.rsplit(".", 1)[-1].lower() if "." in filename_display else ""
+        filename_display, file_type = build_file_display_metadata_from_source(item, params=params)
         item_path = item
 
         content_hash = None
@@ -158,6 +150,38 @@ async def prepare_item_metadata(item: str, content_type: str, kb_id: str, params
         metadata["processing_params"] = sanitize_processing_params(params)
 
     return metadata
+
+
+def build_file_display_metadata_from_source(file_path: str, params: dict | None = None) -> tuple[str, str]:
+    """从 MinIO URL 和处理参数生成展示文件名与文件类型。"""
+    _, object_name = parse_minio_url(file_path)
+    filename_display, file_type = build_file_display_metadata(object_name)
+    source_path = _normalize_source_path(params.get("source_path")) if params else None
+    if source_path:
+        filename_display = source_path
+        file_type = get_file_type_from_filename(filename_display)
+    return filename_display, file_type
+
+
+def build_file_display_metadata(object_name: str) -> tuple[str, str]:
+    """从 MinIO 对象名生成展示文件名和文件类型。"""
+    if not object_name:
+        raise ValueError("object_name is required")
+
+    filename = object_name.rsplit("/", 1)[-1]
+    if not filename:
+        raise ValueError(f"object_name has no filename: {object_name}")
+
+    match = _UPLOAD_TIMESTAMP_PATTERN.match(filename)
+    filename_display = match.group(1) + match.group(3) if match else filename
+    return filename_display, get_file_type_from_filename(filename_display)
+
+
+def get_file_type_from_filename(filename: str) -> str:
+    """从展示文件名提取小写扩展名。"""
+    if not filename:
+        return ""
+    return filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
 
 def _normalize_source_path(value: object) -> str | None:
@@ -215,9 +239,10 @@ def merge_processing_params(metadata_params: dict | None, request_params: dict |
 
 def is_minio_url(file_path: str) -> bool:
     """检测是否是本系统生成的 MinIO 存储 URL。"""
-    from urllib.parse import urlparse
+    if not isinstance(file_path, str) or not file_path.strip():
+        return False
 
-    parsed_url = urlparse(file_path)
+    parsed_url = urlsplit(file_path.strip())
     if parsed_url.scheme == "minio":
         return bool(parsed_url.netloc and parsed_url.path.lstrip("/"))
 
@@ -250,29 +275,25 @@ def parse_minio_url(file_path: str) -> tuple[str, str]:
     Raises:
         ValueError: 如果无法解析URL
     """
-    try:
-        from urllib.parse import unquote, urlparse
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise ValueError("MinIO URL must be a non-empty string")
 
-        # 解析URL
-        parsed_url = urlparse(file_path)
+    parsed_url = urlsplit(file_path.strip())
 
-        # 对于 minio:// 协议，bucket名称在netloc中
-        if parsed_url.scheme == "minio":
-            bucket_name = parsed_url.netloc
-            object_name = unquote(parsed_url.path.lstrip("/"))
-        else:
-            # 对于 http/https 协议，bucket名称在path的第一部分
-            object_name = parsed_url.path.lstrip("/")
-            path_parts = object_name.split("/", 1)
-            if len(path_parts) > 1:
-                bucket_name = path_parts[0]
-                object_name = unquote(path_parts[1])
-            else:
-                raise ValueError(f"无法解析MinIO URL中的bucket名称: {file_path}")
+    if parsed_url.scheme == "minio":
+        bucket_name = parsed_url.netloc
+        object_name = unquote(parsed_url.path.lstrip("/"))
+    elif parsed_url.scheme in {"http", "https"}:
+        path_parts = parsed_url.path.lstrip("/").split("/", 1)
+        if len(path_parts) != 2 or not path_parts[0] or not path_parts[1]:
+            raise ValueError(f"无法解析MinIO URL中的bucket名称: {file_path}")
+        bucket_name = path_parts[0]
+        object_name = unquote(path_parts[1])
+    else:
+        raise ValueError(f"Unsupported MinIO URL scheme: {parsed_url.scheme}")
 
-        logger.debug(f"Parsed MinIO URL: bucket_name={bucket_name}, object_name={object_name}")
-        return bucket_name, object_name
-
-    except Exception as e:
-        logger.error(f"Failed to parse MinIO URL {file_path}: {e}")
+    if not bucket_name or not object_name:
         raise ValueError(f"无法解析MinIO URL: {file_path}")
+
+    logger.debug(f"Parsed MinIO URL: bucket_name={bucket_name}, object_name={object_name}")
+    return bucket_name, object_name

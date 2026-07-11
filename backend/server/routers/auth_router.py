@@ -249,7 +249,7 @@ async def _get_default_department_id(db: AsyncSession) -> int:
     department = result.scalar_one_or_none()
     if department:
         return department.id
-    department = Department(name="默认部门", description="前后台单工作区默认部门")
+    department = Department(name="默认部门", description="前后台默认部门")
     db.add(department)
     await db.flush()
     return department.id

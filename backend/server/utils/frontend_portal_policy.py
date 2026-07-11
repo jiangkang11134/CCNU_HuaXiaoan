@@ -22,7 +22,7 @@ FRONTEND_CHAT_CONFIG_DEFAULT = {
     "organization_name": "江南语析",
     "organization_avatar": "/avatar.jpg",
     "organization_logo": "/favicon.svg",
-    "login_bg": "/login-bg.jpg",
+    "login_bg": "/lab-safety-login-bg.svg",
     "browser_title": "语析 - Knowledge Management",
     "system_name": "智能AI对话系统",
     "welcome_title_mode": "dynamic",
@@ -42,6 +42,7 @@ FRONTEND_CHAT_CONFIG_DEFAULT = {
     "show_thought_process": True,
     "show_reference_documents": True,
 }
+DEPRECATED_LOGIN_BG_PATHS = {"/login-bg.jpg"}
 
 BOOLEAN_CONFIG_KEYS = {
     "allow_user_select_agents",
@@ -82,7 +83,7 @@ def is_frontend_chat_user(user: User) -> bool:
         user: 当前登录用户。
 
     Returns:
-        bool: 普通前台用户返回 True，后台管理员或工作区用户返回 False。
+        bool: 普通前台用户返回 True，后台管理员返回 False。
     """
     return user.role == "user" and user.business_role in FRONTEND_BUSINESS_ROLES
 
@@ -149,6 +150,9 @@ def normalize_frontend_chat_config(config_value: dict, agent_options: list[dict]
     for key in BOOLEAN_CONFIG_KEYS:
         if not isinstance(config_data.get(key), bool):
             raise HTTPException(status_code=400, detail=f"前台配置 {key} 必须是布尔值")
+
+    if config_data["login_bg"] in DEPRECATED_LOGIN_BG_PATHS:
+        config_data["login_bg"] = FRONTEND_CHAT_CONFIG_DEFAULT["login_bg"]
 
     if config_data["welcome_title_mode"] not in {"dynamic", "custom"}:
         raise HTTPException(status_code=400, detail="输入框标题模式必须是 dynamic 或 custom")

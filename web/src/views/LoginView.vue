@@ -338,7 +338,7 @@ const pageTitle = computed(() => (isFrontPortal.value ? '前台问答登录' : '
 
 // 品牌展示数据
 const loginBgImage = computed(() => {
-  return infoStore.organization?.login_bg || '/login-bg.jpg'
+  return infoStore.organization?.login_bg || '/lab-safety-login-bg.svg'
 })
 const brandLogo = computed(() => {
   return infoStore.organization?.logo || ''

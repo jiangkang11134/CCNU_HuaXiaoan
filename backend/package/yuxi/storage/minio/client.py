@@ -376,7 +376,9 @@ class MinIOClient:
             StorageError: 如果 URL 无效或下载失败
         """
         import tempfile
-        from urllib.parse import urlparse
+        from urllib.parse import urlsplit
+
+        from yuxi.knowledge.utils.kb_utils import parse_minio_url
 
         # 验证 URL
         if not url or not isinstance(url, str):
@@ -387,7 +389,7 @@ class MinIOClient:
         if not url.startswith(("http://", "https://")):
             raise StorageError("无效的 MinIO URL，只允许 http/https")
 
-        parsed = urlparse(url)
+        parsed = urlsplit(url)
 
         # 验证主机
         endpoint_host = self.endpoint.split("://")[-1].split(":")[0]
@@ -404,12 +406,10 @@ class MinIOClient:
         if allowed_extensions and not any(url.endswith(ext) for ext in allowed_extensions):
             raise StorageError(f"文件扩展名不符合要求，允许: {', '.join(allowed_extensions)}")
 
-        # 解析 bucket 和 object name
-        path_parts = parsed.path.lstrip("/").split("/", 1)
-        if len(path_parts) != 2:
-            raise StorageError("无法解析 MinIO URL")
-
-        bucket_name, object_name = path_parts
+        try:
+            bucket_name, object_name = parse_minio_url(url)
+        except ValueError as exc:
+            raise StorageError(str(exc)) from exc
 
         # 下载文件
         file_data = await self.adownload_file(bucket_name, object_name)

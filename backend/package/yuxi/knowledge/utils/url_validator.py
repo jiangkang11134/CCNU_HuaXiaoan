@@ -1,19 +1,13 @@
 """URL validation utilities for whitelist-based URL parsing."""
 
-import os
 from urllib.parse import urlparse
 
-# Environment variable name for URL whitelist
-YUXI_URL_WHITELIST_ENV = "YUXI_URL_WHITELIST"
+from yuxi import config
 
 
 def _get_whitelist() -> list[str]:
-    """Get the URL whitelist from environment variables."""
-    whitelist_str = os.environ.get(YUXI_URL_WHITELIST_ENV, "")
-    if not whitelist_str:
-        return []
-    # Split by comma and clean up whitespace
-    return [item.strip() for item in whitelist_str.split(",") if item.strip()]
+    """Get the URL whitelist from runtime system config."""
+    return [item.strip() for item in config.url_whitelist if isinstance(item, str) and item.strip()]
 
 
 def validate_url(url: str) -> tuple[bool, str]:

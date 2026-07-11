@@ -79,18 +79,18 @@
           />
           <div v-else class="preview-empty">
             <div class="preview-empty-title">选择交付物后可在此预览</div>
-            <div class="preview-empty-desc">也可以打开文件列表，浏览当前工作区文件。</div>
+            <div class="preview-empty-desc">也可以打开文件列表，浏览当前对话文件。</div>
           </div>
         </div>
 
         <div v-if="treePaneVisible" class="tree-pane">
-          <div v-if="!threadId" class="empty">创建对话后可查看工作区</div>
+          <div v-if="!threadId" class="empty">创建对话后可查看文件区</div>
           <div v-else-if="loadingFiles" class="empty">正在加载文件系统...</div>
           <div v-else-if="filesystemError" class="empty error-state">
             <div>{{ filesystemError }}</div>
             <a-button type="link" size="small" @click="refreshFileSystem">重试</a-button>
           </div>
-          <div v-else-if="!fileTreeData.length" class="empty">当前工作区为空</div>
+          <div v-else-if="!fileTreeData.length" class="empty">当前文件区为空</div>
           <div v-else class="file-tree-container">
             <FileTreeComponent
               v-model:selectedKeys="selectedKeys"

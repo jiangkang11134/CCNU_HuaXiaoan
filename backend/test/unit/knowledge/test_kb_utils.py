@@ -1,6 +1,6 @@
 import pytest
 
-from yuxi.knowledge.utils.kb_utils import prepare_item_metadata
+from yuxi.knowledge.utils.kb_utils import parse_minio_url, prepare_item_metadata
 
 
 async def test_prepare_item_metadata_preserves_uploaded_file_size():
@@ -27,6 +27,35 @@ async def test_prepare_item_metadata_uses_source_path_as_display_filename():
 
     assert metadata["filename"] == "guides/setup/Intro.MD"
     assert metadata["file_type"] == "md"
+    assert metadata["path"] == item
+
+
+def test_parse_minio_url_preserves_semicolon_object_name():
+    item = (
+        "http://localhost:9000/knowledgebases/kb_8nqjxjpitx/upload/"
+        "FFE186A3-2E47-4E01-AF15-1E1048CB42D2_丙酮氰醇;2-氰基丙基-2-醇_75-86-5_1783737364782.pdf"
+    )
+
+    bucket_name, object_name = parse_minio_url(item)
+
+    assert bucket_name == "knowledgebases"
+    assert object_name == (
+        "kb_8nqjxjpitx/upload/"
+        "FFE186A3-2E47-4E01-AF15-1E1048CB42D2_丙酮氰醇;2-氰基丙基-2-醇_75-86-5_1783737364782.pdf"
+    )
+
+
+async def test_prepare_item_metadata_preserves_semicolon_pdf_filename():
+    item = (
+        "http://localhost:9000/knowledgebases/kb_8nqjxjpitx/upload/"
+        "FFE186A3-2E47-4E01-AF15-1E1048CB42D2_丙酮氰醇;2-氰基丙基-2-醇_75-86-5_1783737364782.pdf"
+    )
+    params = {"content_hashes": {item: "hash"}}
+
+    metadata = await prepare_item_metadata(item, "file", "kb_8nqjxjpitx", params=params)
+
+    assert metadata["filename"] == "FFE186A3-2E47-4E01-AF15-1E1048CB42D2_丙酮氰醇;2-氰基丙基-2-醇_75-86-5.pdf"
+    assert metadata["file_type"] == "pdf"
     assert metadata["path"] == item
 
 

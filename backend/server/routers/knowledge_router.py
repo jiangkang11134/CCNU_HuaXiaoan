@@ -31,7 +31,6 @@ from yuxi.knowledge.utils.sample_question_utils import (
 from yuxi.knowledge.utils.url_fetcher import fetch_url_content
 from yuxi.models.providers.cache import model_cache
 from yuxi.services.task_service import TaskContext, tasker
-from yuxi.services.workspace_service import MAX_WORKSPACE_UPLOAD_SIZE_BYTES, resolve_workspace_file_path
 from yuxi.storage.minio.client import MinIOClient, StorageError, aupload_file_to_minio, get_minio_client
 from yuxi.storage.postgres.models_business import User
 from yuxi.utils import logger
@@ -56,11 +55,6 @@ class UpdateDatabaseRequest(BaseModel):
     llm_model_spec: str | None = None
     additional_params: dict | None = None
     share_config: dict | None = None
-
-
-class WorkspaceImportRequest(BaseModel):
-    kb_id: str
-    paths: list[str]
 
 
 class AddUploadedDocumentsRequest(BaseModel):
@@ -183,6 +177,26 @@ def _params_for_uploaded_document_item(item: str, params: dict) -> dict:
     if isinstance(source_paths, dict) and source_paths.get(item):
         item_params["source_path"] = source_paths[item]
     return item_params
+
+
+def _binary_preview_response(data: dict) -> StreamingResponse:
+    filename = data.get("filename") or "preview"
+    preview_type = data.get("preview_type") or "unsupported"
+    return StreamingResponse(
+        io.BytesIO(data.get("content") or b""),
+        media_type=data.get("media_type") or "application/octet-stream",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+            "X-Yuxi-Preview-Type": preview_type,
+            "X-Yuxi-Preview-Filename": quote(filename),
+        },
+    )
+
+
+def _document_preview_response(data):
+    if isinstance(data, dict) and data.get("binary"):
+        return _binary_preview_response(data)
+    return data
 
 
 async def _has_running_graph_build_task(kb_id: str) -> bool:
@@ -402,6 +416,19 @@ async def repair_database_stats(kb_id: str, current_user: User = Depends(get_adm
     except Exception as e:
         logger.error(f"修复知识库统计失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"修复知识库统计失败: {e}")
+
+
+@knowledge.post("/databases/{kb_id}/files/metadata/repair")
+async def repair_database_file_metadata(kb_id: str, current_user: User = Depends(get_admin_user)):
+    """从 MinIO URL 修复知识库历史文件展示名称、文件类型和缺失大小。"""
+    await _ensure_database_supports_documents(kb_id, "文件元数据修复")
+    try:
+        return await knowledge_base.repair_file_display_metadata(kb_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"修复知识库文件元数据失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"修复知识库文件元数据失败: {e}")
 
 
 @knowledge.put("/databases/{kb_id}")
@@ -1528,6 +1555,19 @@ async def download_document(kb_id: str, doc_id: str, current_user: User = Depend
         raise HTTPException(status_code=500, detail=f"下载失败: {e}")
 
 
+@knowledge.get("/databases/{kb_id}/documents/{doc_id}/preview")
+async def preview_document(kb_id: str, doc_id: str, current_user: User = Depends(get_admin_user)):
+    """预览知识库原始文件或解析结果。"""
+    await _ensure_database_supports_documents(kb_id, "文档预览")
+    try:
+        return _document_preview_response(await knowledge_base.read_file_preview(kb_id=kb_id, file_id=doc_id))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"预览文件失败: {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"预览失败: {e}")
+
+
 # =============================================================================
 # === 知识库查询分组 ===
 # =============================================================================
@@ -1780,72 +1820,6 @@ async def fetch_url(
     except Exception as e:
         logger.error(f"Failed to fetch URL {url}: {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch URL: {str(e)}")
-
-
-@knowledge.post("/files/import-workspace")
-async def import_workspace_files(
-    payload: WorkspaceImportRequest,
-    current_user: User = Depends(get_admin_user),
-):
-    """将当前用户工作区文件导入 MinIO，返回与普通文件上传一致的预处理结果。"""
-    kb_id = payload.kb_id.strip()
-    paths = [path for path in payload.paths if str(path or "").strip()]
-    if not kb_id:
-        raise HTTPException(status_code=400, detail="kb_id is required")
-    if not paths:
-        raise HTTPException(status_code=400, detail="请选择至少一个工作区文件")
-
-    await _ensure_database_supports_documents(kb_id, "文档添加/解析/入库")
-
-    bucket_name = MinIOClient.KB_BUCKETS["documents"]
-    results = []
-    for workspace_path in paths:
-        target = resolve_workspace_file_path(path=workspace_path, current_user=current_user)
-
-        filename = target.name
-        ext = os.path.splitext(filename)[1].lower()
-        if not is_supported_file_extension(filename):
-            raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
-
-        size = target.stat().st_size
-        if size > MAX_WORKSPACE_UPLOAD_SIZE_BYTES:
-            raise HTTPException(status_code=400, detail="文件过大，当前仅支持 100 MB 以内的工作区文件")
-
-        file_bytes = await asyncio.to_thread(target.read_bytes)
-        content_hash = await calculate_content_hash(file_bytes)
-
-        file_exists = await knowledge_base.file_existed_in_db(kb_id, content_hash)
-        if file_exists:
-            raise HTTPException(status_code=409, detail=f"数据库中已经存在了相同内容文件: {filename}")
-
-        basename, ext = os.path.splitext(filename)
-        timestamp = int(time.time() * 1000)
-        minio_filename = f"{basename}_{timestamp}{ext}"
-        object_name = f"{kb_id}/upload/{minio_filename}"
-        minio_url = await aupload_file_to_minio(bucket_name, object_name, file_bytes)
-
-        normalized_filename = filename.lower()
-        same_name_files = await knowledge_base.get_same_name_files(kb_id, normalized_filename)
-        results.append(
-            {
-                "message": "Workspace file successfully imported",
-                "file_path": minio_url,
-                "minio_path": minio_url,
-                "kb_id": kb_id,
-                "content_hash": content_hash,
-                "filename": normalized_filename,
-                "original_filename": basename,
-                "size": len(file_bytes),
-                "minio_filename": minio_filename,
-                "object_name": object_name,
-                "bucket_name": bucket_name,
-                "workspace_path": workspace_path,
-                "same_name_files": same_name_files,
-                "has_same_name": len(same_name_files) > 0,
-            }
-        )
-
-    return {"status": "success", "items": results}
 
 
 @knowledge.post("/files/upload")

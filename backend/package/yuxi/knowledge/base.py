@@ -1284,6 +1284,73 @@ class KnowledgeBase(ABC):
             "updated_size_files": updated_size_files,
         }
 
+    async def repair_file_display_metadata(self, kb_id: str) -> dict:
+        """从 MinIO URL 修复历史文件记录的展示文件名、类型和缺失大小。"""
+        if kb_id not in self.databases_meta:
+            raise ValueError(f"Database {kb_id} not found")
+
+        from yuxi.knowledge.utils import build_file_display_metadata_from_source, is_minio_url
+        from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+        file_repo = KnowledgeFileRepository()
+        after_file_id = None
+        scanned_files = 0
+        skipped_files = 0
+        updated_files = 0
+        updated_filename_files = 0
+        updated_file_type_files = 0
+        updated_size_files = 0
+
+        while True:
+            records = await file_repo.list_by_kb_id_after(
+                kb_id,
+                after_file_id=after_file_id,
+                limit=500,
+                files_only=True,
+            )
+            if not records:
+                break
+            after_file_id = records[-1].file_id
+
+            size_updates = await self._fill_missing_file_sizes_for_records(records)
+            scanned_files += len(records)
+
+            for record in records:
+                file_path = record.minio_url or record.path
+                if not file_path or not is_minio_url(file_path):
+                    skipped_files += 1
+                    continue
+
+                processing_params = record.processing_params if isinstance(record.processing_params, dict) else {}
+                filename, file_type = build_file_display_metadata_from_source(file_path, params=processing_params)
+                update_data: dict[str, Any] = {}
+
+                if record.filename != filename:
+                    update_data["filename"] = filename
+                    updated_filename_files += 1
+                if (record.file_type or "") != file_type:
+                    update_data["file_type"] = file_type
+                    updated_file_type_files += 1
+                if record.file_id in size_updates:
+                    update_data["file_size"] = size_updates[record.file_id]
+                    updated_size_files += 1
+
+                if update_data:
+                    updated_files += 1
+                    await file_repo.update_fields(file_id=record.file_id, kb_id=kb_id, data=update_data)
+
+        stats = await self.refresh_database_stats(kb_id)
+        return {
+            "status": "success",
+            "stats": stats,
+            "scanned_files": scanned_files,
+            "skipped_files": skipped_files,
+            "updated_files": updated_files,
+            "updated_filename_files": updated_filename_files,
+            "updated_file_type_files": updated_file_type_files,
+            "updated_size_files": updated_size_files,
+        }
+
     def get_database_info(self, kb_id: str, include_files: bool = True) -> dict | None:
         """
         获取数据库详细信息

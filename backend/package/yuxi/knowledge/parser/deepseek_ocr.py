@@ -14,6 +14,7 @@ from typing import Any
 import fitz  # PyMuPDF
 import requests
 
+from yuxi import config
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
 from yuxi.utils import logger
 
@@ -32,10 +33,10 @@ class DeepSeekOCRParser(BaseDocumentProcessor):
     }
 
     def __init__(self, api_key: str | None = None):
-        self.api_key = api_key or os.getenv("SILICONFLOW_API_KEY")
+        self.api_key = api_key or config.deepseek_ocr_api_key or os.getenv("SILICONFLOW_API_KEY")
         if not self.api_key:
             raise DocumentParserException(
-                "SILICONFLOW_API_KEY environment variable not set", "deepseek_ocr", "missing_api_key"
+                "DeepSeek OCR API Key 未配置", "deepseek_ocr", "missing_api_key"
             )
 
         self.api_url = "https://api.siliconflow.cn/v1/chat/completions"

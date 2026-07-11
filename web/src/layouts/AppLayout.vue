@@ -6,7 +6,6 @@ import {
   ClipboardList,
   LibraryBig,
   Box,
-  FolderKanban,
   PanelLeftClose,
   PanelLeftOpen,
   MessageCirclePlus,
@@ -130,13 +129,6 @@ const mainList = computed(() => {
     }
     return items
   }
-
-  items.push({
-    name: '工作区',
-    path: '/back/workspace',
-    icon: FolderKanban,
-    activeIcon: FolderKanban
-  })
 
   items.push({
     name: '智能体扩展',

@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1004 1380" role="img" aria-label="实验室安全教育登录背景">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0b3b4b"/>
+      <stop offset="0.48" stop-color="#145c67"/>
+      <stop offset="1" stop-color="#f0a44f"/>
+    </linearGradient>
+    <linearGradient id="bench" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#17333f"/>
+      <stop offset="0.56" stop-color="#294b53"/>
+      <stop offset="1" stop-color="#17333f"/>
+    </linearGradient>
+    <radialGradient id="lamp" cx="50%" cy="0" r="78%">
+      <stop offset="0" stop-color="#fff6cf" stop-opacity="0.75"/>
+      <stop offset="0.58" stop-color="#ffe6a2" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffe6a2" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <style>
+      .float-slow { animation: floatSlow 8s ease-in-out infinite; }
+      .float-mid { animation: floatMid 6s ease-in-out infinite; }
+      .pulse { animation: pulse 3.6s ease-in-out infinite; transform-origin: center; }
+      .steam { animation: steam 4.2s ease-in-out infinite; opacity: 0; }
+      .scan { animation: scan 5.5s ease-in-out infinite; }
+      @keyframes floatSlow {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-18px); }
+      }
+      @keyframes floatMid {
+        0%, 100% { transform: translateY(0) translateX(0); }
+        50% { transform: translateY(-12px) translateX(8px); }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.58; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.04); }
+      }
+      @keyframes steam {
+        0% { opacity: 0; transform: translateY(0) scale(0.92); }
+        25% { opacity: 0.5; }
+        100% { opacity: 0; transform: translateY(-92px) scale(1.2); }
+      }
+      @keyframes scan {
+        0%, 100% { transform: translateY(-120px); opacity: 0; }
+        18%, 72% { opacity: 0.58; }
+        50% { transform: translateY(560px); opacity: 0.24; }
+      }
+    </style>
+  </defs>
+
+  <rect width="1004" height="1380" fill="url(#bg)"/>
+  <rect width="1004" height="1380" fill="#071b24" opacity="0.2"/>
+  <ellipse cx="520" cy="90" rx="420" ry="520" fill="url(#lamp)"/>
+
+  <g opacity="0.16" stroke="#d4f7ee" stroke-width="2">
+    <path d="M0 268h1004M0 456h1004M0 644h1004M0 832h1004M0 1020h1004"/>
+    <path d="M158 0v1380M345 0v1380M532 0v1380M719 0v1380M906 0v1380"/>
+  </g>
+
+  <g class="scan" opacity="0.55">
+    <rect x="90" y="360" width="824" height="72" rx="36" fill="#d9fff6" filter="url(#soft)" opacity="0.25"/>
+    <rect x="130" y="382" width="744" height="12" rx="6" fill="#ffffff" opacity="0.28"/>
+  </g>
+
+  <g transform="translate(120 188)" class="float-slow">
+    <rect x="0" y="0" width="202" height="126" rx="22" fill="#d8fff4" opacity="0.12"/>
+    <path d="M34 86h134M34 58h76" stroke="#e6fff8" stroke-width="10" stroke-linecap="round" opacity="0.72"/>
+    <circle cx="154" cy="56" r="18" fill="#67e8c6" opacity="0.92"/>
+    <path d="M145 55l8 8 16-21" fill="none" stroke="#08313d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(638 245)" class="float-mid">
+    <path d="M86 0l86 150H0z" fill="#ffd166" opacity="0.95"/>
+    <path d="M86 42v50" stroke="#102b34" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="86" cy="117" r="7" fill="#102b34"/>
+  </g>
+
+  <g transform="translate(137 684)">
+    <ellipse cx="368" cy="434" rx="420" ry="44" fill="#071b24" opacity="0.34"/>
+    <rect x="18" y="320" width="734" height="72" rx="18" fill="url(#bench)"/>
+    <rect x="64" y="388" width="58" height="286" rx="16" fill="#17333f"/>
+    <rect x="624" y="388" width="58" height="286" rx="16" fill="#17333f"/>
+
+    <g transform="translate(68 82)">
+      <path d="M144 0h74v200c0 45-36 82-82 82h-58c-45 0-82-37-82-82V0h74v198c0 5 4 9 8 9h58c5 0 8-4 8-9z" fill="#d8fff4" opacity="0.95"/>
+      <path d="M70 72h148v128c0 45-36 82-82 82h-58c-45 0-82-37-82-82V72z" fill="#53d1c2" opacity="0.68"/>
+      <path d="M20 158c46 22 88-22 140 0 24 10 44 11 58 6v36c0 45-36 82-82 82h-58c-45 0-82-37-82-82v-36c8-4 16-6 24-6z" fill="#16a6a5" opacity="0.78"/>
+      <path class="steam" d="M72 54c-22-30 28-44 8-78" fill="none" stroke="#e9fff8" stroke-width="10" stroke-linecap="round"/>
+      <path class="steam" style="animation-delay:.9s" d="M132 44c-18-28 24-48 4-82" fill="none" stroke="#e9fff8" stroke-width="8" stroke-linecap="round"/>
+    </g>
+
+    <g transform="translate(390 22)">
+      <path d="M104 0h62v210l104 152c31 46-2 108-58 108H58c-56 0-89-62-58-108l104-152z" fill="#effffb" opacity="0.95"/>
+      <path d="M88 266h94l64 94c22 32-1 76-40 76H64c-39 0-62-44-40-76z" fill="#f59e42" opacity="0.86"/>
+      <path d="M62 334c50-24 87 25 144 0l40 58c22 32-1 76-40 76H64c-39 0-62-44-40-76z" fill="#e4572e" opacity="0.74"/>
+      <circle class="pulse" cx="225" cy="298" r="24" fill="#fff0b8"/>
+    </g>
+
+    <g transform="translate(505 296)">
+      <rect x="0" y="0" width="168" height="122" rx="18" fill="#ffe2a8"/>
+      <path d="M84 26l50 86H34z" fill="#122f39" opacity="0.82"/>
+      <path d="M84 50v26" stroke="#ffe2a8" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="84" cy="94" r="5" fill="#ffe2a8"/>
+    </g>
+  </g>
+
+  <g opacity="0.22" fill="#ffffff">
+    <circle class="pulse" cx="138" cy="1130" r="8"/>
+    <circle class="pulse" style="animation-delay:.7s" cx="822" cy="1024" r="10"/>
+    <circle class="pulse" style="animation-delay:1.5s" cx="760" cy="176" r="6"/>
+    <circle class="pulse" style="animation-delay:2.1s" cx="260" cy="470" r="7"/>
+  </g>
+</svg>

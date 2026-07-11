@@ -51,26 +51,6 @@ if [ -f ".env" ]; then
 else
     echo "📝 .env file not found. Let's set up your environment variables."
     echo ""
-
-    # Get SILICONFLOW_API_KEY
-    echo "🔑 SiliconFlow API Key required"
-    echo "Get your API key from: https://cloud.siliconflow.cn/i/Eo5yTHGJ"
-    while true; do
-        read -s -p "Please enter your SILICONFLOW_API_KEY: " SILICONFLOW_API_KEY
-        echo ""
-        if [ -z "$SILICONFLOW_API_KEY" ]; then
-            echo "❌ API Key cannot be empty. Please try again."
-        else
-            break
-        fi
-    done
-
-    # Get TAVILY_API_KEY (optional)
-    echo ""
-    echo "🔍 Tavily API Key (optional) - for search service"
-    echo "Get your API key from: https://app.tavily.com/"
-    read -p "Please enter your TAVILY_API_KEY (press Enter to skip): " TAVILY_API_KEY
-
     echo ""
     echo "JWT security settings"
     read -s -p "Please enter your JWT_SECRET_KEY (press Enter to auto-generate): " JWT_SECRET_KEY
@@ -88,24 +68,13 @@ else
 
     # Create .env file
     cat > .env << EOF
-# SiliconFlow API Key (required)
-SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
-
-# Tavily API Key (optional - for search service)
-EOF
-
-    if [ -n "$TAVILY_API_KEY" ]; then
-        echo "TAVILY_API_KEY=${TAVILY_API_KEY}" >> .env
-    fi
-
-    cat >> .env << EOF
-
 # JWT security settings
 JWT_SECRET_KEY=${JWT_SECRET_KEY}
 YUXI_INSTANCE_ID=${YUXI_INSTANCE_ID}
 EOF
 
     echo "✅ .env file created successfully!"
+    echo "Model, OCR, URL whitelist and Tavily keys can be configured in the admin UI."
 fi
 
 echo ""

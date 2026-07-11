@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from yuxi import config
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
 from yuxi.storage.minio import get_minio_client
 from yuxi.utils import logger
@@ -28,8 +29,8 @@ class PaddleOCRAPIParser(BaseDocumentProcessor):
     default_optional_payload: dict[str, bool] = {}
 
     def __init__(self, api_token: str | None = None, api_url: str | None = None):
-        self.api_token = api_token or os.getenv("PADDLEOCR_API_TOKEN")
-        self.api_url = (api_url or os.getenv("PADDLEOCR_API_URL") or DEFAULT_PADDLEOCR_API_URL).rstrip("/")
+        self.api_token = api_token or config.paddleocr_api_token or os.getenv("PADDLEOCR_API_TOKEN")
+        self.api_url = (api_url or config.paddleocr_api_url or os.getenv("PADDLEOCR_API_URL") or DEFAULT_PADDLEOCR_API_URL).rstrip("/")
 
     def get_service_name(self) -> str:
         return self.service_name
@@ -41,7 +42,7 @@ class PaddleOCRAPIParser(BaseDocumentProcessor):
         if not self.api_token:
             return {
                 "status": "unavailable",
-                "message": "PADDLEOCR_API_TOKEN 未配置",
+                "message": "PaddleOCR API Token 未配置",
                 "details": {"api_url": self.api_url, "model": self.model},
             }
 
@@ -92,7 +93,7 @@ class PaddleOCRAPIParser(BaseDocumentProcessor):
 
     def _require_api_token(self) -> None:
         if not self.api_token:
-            raise DocumentParserException("PADDLEOCR_API_TOKEN 未配置", self.get_service_name(), "missing_api_token")
+            raise DocumentParserException("PaddleOCR API Token 未配置", self.get_service_name(), "missing_api_token")
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"bearer {self.api_token}"}

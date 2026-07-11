@@ -11,6 +11,7 @@ from pathlib import Path
 
 import requests
 
+from yuxi import config
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
 from yuxi.knowledge.parser.zip_utils import process_zip_file_sync
 from yuxi.utils import logger
@@ -20,7 +21,7 @@ class MinerUParser(BaseDocumentProcessor):
     """MinerU 文档解析器 - 使用 HTTP API 进行文档理解和解析"""
 
     def __init__(self, server_url: str | None = None):
-        self.server_url = server_url or os.getenv("MINERU_API_URI") or "http://localhost:30001"
+        self.server_url = server_url or config.mineru_api_uri or os.getenv("MINERU_API_URI") or "http://localhost:30001"
         self.parse_endpoint = f"{self.server_url}/file_parse"
 
     def get_service_name(self) -> str:
@@ -156,7 +157,7 @@ class MinerUParser(BaseDocumentProcessor):
                     self.parse_endpoint,
                     files=files,
                     data=data,
-                    timeout=int(os.environ.get("MINERU_TIMEOUT", 1800)),  # 30分钟超时
+                    timeout=int(config.mineru_timeout_seconds),
                 )
 
             # 检查响应状态
@@ -227,7 +228,7 @@ class MinerUParser(BaseDocumentProcessor):
         except DocumentParserException:
             raise
         except requests.exceptions.Timeout:
-            error_msg = f"MinerU 处理超时 ({time.time() - start_time:.2f}s), 可以配置 MINERU_TIMEOUT 环境变量。"
+            error_msg = f"MinerU 处理超时 ({time.time() - start_time:.2f}s)，请在后台系统配置中调整超时时间。"
             logger.error(error_msg)
             raise DocumentParserException(error_msg, self.get_service_name(), "timeout")
         except requests.exceptions.ConnectionError:

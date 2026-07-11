@@ -19,6 +19,31 @@ from server.utils.frontend_portal_policy import (
 )
 
 system = APIRouter(prefix="/system", tags=["system"])
+SENSITIVE_CONFIG_FIELDS = frozenset(
+    {
+        "tavily_api_key",
+        "mineru_api_key",
+        "paddleocr_api_token",
+        "deepseek_ocr_api_key",
+    }
+)
+
+
+def _dump_public_config() -> dict:
+    payload = config.dump_config()
+    for key in SENSITIVE_CONFIG_FIELDS:
+        if key in payload:
+            payload[f"{key}_configured"] = bool(payload.get(key))
+            payload[key] = ""
+    return payload
+
+
+def _remove_empty_sensitive_config_values(items: dict) -> dict:
+    sanitized = dict(items)
+    for key in SENSITIVE_CONFIG_FIELDS:
+        if key in sanitized and not str(sanitized.get(key) or "").strip():
+            sanitized.pop(key)
+    return sanitized
 
 # =============================================================================
 # === 健康检查分组 ===
@@ -64,7 +89,7 @@ async def discovery():
 @system.get("/config")
 async def get_config(current_user: User = Depends(get_required_user)):
     """获取系统配置"""
-    return config.dump_config()
+    return _dump_public_config()
 
 
 @system.post("/config")
@@ -74,23 +99,25 @@ async def update_config_single(key=Body(...), value=Body(...), current_user: Use
         raise HTTPException(status_code=400, detail=f"未知配置项: {key}")
     if not config.can_update(key):
         raise HTTPException(status_code=400, detail=f"配置项不可修改: {key}")
+    if key in SENSITIVE_CONFIG_FIELDS and not str(value or "").strip():
+        return _dump_public_config()
     try:
         config.set_value(key, value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     config.save()
-    return config.dump_config()
+    return _dump_public_config()
 
 
 @system.post("/config/update")
 async def update_config_batch(items: dict = Body(...), current_user: User = Depends(get_admin_user)) -> dict:
     """批量更新配置项"""
     try:
-        config.update(items)
+        config.update(_remove_empty_sensitive_config_values(items))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     config.save()
-    return config.dump_config()
+    return _dump_public_config()
 
 
 @system.get("/frontend-chat-config")

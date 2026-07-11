@@ -9,6 +9,7 @@ from langgraph.prebuilt.tool_node import ToolRuntime
 from langgraph.types import Command, interrupt
 from pydantic import BaseModel, Field
 
+from yuxi import config
 from yuxi.agents.toolkits.registry import ToolExtraMetadata, _all_tool_instances, _extra_registry, tool
 from yuxi.utils import logger
 from yuxi.utils.paths import (
@@ -21,8 +22,9 @@ from yuxi.utils.paths import (
 )
 from yuxi.utils.question_utils import normalize_questions
 
-# Lazy initialization for TavilySearch (only when API key is available)
+# Lazy initialization for TavilySearch.
 _tavily_search_instance = None
+_tavily_search_api_key = ""
 
 _PRESENT_ARTIFACTS_INTERNAL_DIR_NAMES = frozenset(
     {CONVERSATION_HISTORY_DIR_NAME, LARGE_TOOL_RESULTS_DIR_NAME, "large_tool_history"}
@@ -35,35 +37,27 @@ _SAFE_OUTPUT_STEM_RE = re.compile(r"[^A-Za-z0-9._\-\u4e00-\u9fff]+")
 
 def _create_tavily_search():
     """Create and register TavilySearch tool with metadata."""
-    global _tavily_search_instance
-    if _tavily_search_instance is None:
+    global _tavily_search_api_key, _tavily_search_instance
+    api_key = (config.tavily_api_key or os.getenv("TAVILY_API_KEY") or "").strip()
+    if not api_key:
+        raise ValueError("Tavily API Key 未配置，请在后台系统配置中填写 tavily_api_key")
+
+    if _tavily_search_instance is None or _tavily_search_api_key != api_key:
         from langchain_tavily import TavilySearch
 
+        os.environ["TAVILY_API_KEY"] = api_key
         _tavily_search_instance = TavilySearch()
+        _tavily_search_api_key = api_key
 
     return _tavily_search_instance
 
 
-# 注册 TavilySearch 工具（延迟初始化）
-def _register_tavily_tool():
-    """Register TavilySearch tool with extra metadata."""
+@tool(category="buildin", tags=["搜索"], display_name="Tavily 网页搜索")
+async def tavily_search(query: str) -> str:
+    """使用 Tavily 执行网页搜索。"""
     tavily_instance = _create_tavily_search()
-    # 手动注册到全局注册表
-    _extra_registry["tavily_search"] = ToolExtraMetadata(
-        category="buildin",
-        tags=["搜索"],
-        display_name="Tavily 网页搜索",
-    )
-    # 添加到工具实例列表
-    _all_tool_instances.append(tavily_instance)
-
-
-# 模块加载时注册
-if os.getenv("TAVILY_API_KEY"):
-    try:
-        _register_tavily_tool()
-    except Exception as e:
-        logger.warning(f"Failed to register TavilySearch tool: {e}")
+    result = await tavily_instance.ainvoke({"query": query})
+    return str(result)
 
 
 class PresentArtifactsInput(BaseModel):

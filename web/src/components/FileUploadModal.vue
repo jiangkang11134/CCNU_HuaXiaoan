@@ -249,77 +249,6 @@
         </div>
       </div>
 
-      <!-- 工作区文件选择区域 -->
-      <div class="workspace-area" v-if="uploadMode === 'workspace'">
-        <div class="workspace-toolbar">
-          <div class="workspace-summary">
-            <FolderOpen :size="16" />
-            <span class="workspace-current-path" :title="workspaceCurrentPath">
-              {{ workspaceCurrentPath }}
-            </span>
-            <span
-              >已选择
-              {{ selectedWorkspacePaths.length }}
-              个文件，注意上传会扁平化上传，不保留文件层级结构</span
-            >
-          </div>
-          <div class="workspace-actions">
-            <a-button
-              size="small"
-              class="lucide-icon-btn"
-              :disabled="workspaceCurrentPath === '/' || workspaceLoading"
-              @click="openWorkspaceParent"
-            >
-              <ArrowLeft :size="14" />
-            </a-button>
-            <a-button
-              size="small"
-              @click="loadWorkspaceFiles()"
-              :loading="workspaceLoading"
-              class="lucide-icon-btn"
-            >
-              <RotateCw :size="14" />
-            </a-button>
-          </div>
-        </div>
-
-        <div class="workspace-list" v-if="workspaceItems.length > 0">
-          <button
-            v-for="item in workspaceDirectoryItems"
-            :key="item.path"
-            type="button"
-            class="workspace-item workspace-directory"
-            :disabled="chunkLoading"
-            @click="openWorkspaceDirectory(item.path)"
-          >
-            <a-checkbox disabled />
-            <FileTypeIcon is-dir :size="16" class="workspace-file-icon" />
-            <span class="workspace-file-name" :title="item.path">{{ item.name }}</span>
-          </button>
-
-          <label
-            v-for="item in workspaceFileItems"
-            :key="item.path"
-            class="workspace-item"
-            :class="{ disabled: !item.supported }"
-          >
-            <a-checkbox
-              :checked="selectedWorkspacePathSet.has(item.path)"
-              :disabled="!item.supported || chunkLoading"
-              @change="toggleWorkspacePath(item.path, $event.target.checked)"
-            />
-            <FileTypeIcon :name="item.path" :size="16" class="workspace-file-icon" />
-            <span class="workspace-file-name" :title="item.path">{{ item.path }}</span>
-            <span class="workspace-file-size">{{ formatFileSize(item.size) }}</span>
-          </label>
-        </div>
-
-        <div class="url-empty-tip" v-else>
-          <Info :size="16" />
-          <span>{{ workspaceLoading ? '正在加载工作区文件' : '当前目录暂无文件' }}</span>
-        </div>
-      </div>
-
       <!-- URL 输入区域 -->
       <div class="url-area" v-if="uploadMode === 'url'">
         <div class="url-input-wrapper">
@@ -419,13 +348,10 @@ import { useConfigStore } from '@/stores/config'
 import { useDatabaseStore } from '@/stores/database'
 import { ocrApi } from '@/apis/system_api'
 import { fileApi, documentApi } from '@/apis/knowledge_api'
-import { getWorkspaceTree } from '@/apis/workspace_api'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import {
   FileUp,
   FolderUp,
-  FolderOpen,
-  ArrowLeft,
   RotateCw,
   Info,
   Download,
@@ -437,7 +363,6 @@ import {
 } from 'lucide-vue-next'
 import { buildChunkParamsPayload } from '@/utils/chunkUtils'
 import ChunkParamsConfig from '@/components/ChunkParamsConfig.vue'
-import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 
 const props = defineProps({
   visible: {
@@ -497,9 +422,6 @@ watch(
       selectedFolderId.value = props.currentFolderId
       isFolderUpload.value = props.isFolderMode
       uploadMode.value = props.mode || (props.isFolderMode ? 'folder' : 'file')
-      if (uploadMode.value === 'workspace') {
-        loadWorkspaceFiles()
-      }
     }
   }
 )
@@ -648,9 +570,6 @@ const canSubmit = computed(() => {
   if (uploadMode.value === 'url') {
     return urlList.value.some((item) => item.status === 'success')
   }
-  if (uploadMode.value === 'workspace') {
-    return selectedWorkspacePaths.value.length > 0 && !workspaceLoading.value
-  }
   return successUploadCount.value > 0 && !hasPendingUploads.value
 })
 
@@ -675,13 +594,6 @@ const uploadModeOptions = computed(() => [
       h(Link, { size: 16, class: 'option-icon' }),
       h('span', { class: 'option-text' }, '解析 URL')
     ])
-  },
-  {
-    value: 'workspace',
-    label: h('div', { class: 'segmented-option' }, [
-      h(FolderOpen, { size: 16, class: 'option-icon' }),
-      h('span', { class: 'option-text' }, '工作区')
-    ])
   }
 ])
 
@@ -692,9 +604,6 @@ watch(uploadMode, (val) => {
   sameNameFiles.value = []
   urlList.value = []
   newUrl.value = ''
-  selectedWorkspacePaths.value = []
-  workspaceCurrentPath.value = '/'
-  workspaceItems.value = []
   for (const task of uploadQueue.value) {
     task.canceled = true
   }
@@ -702,9 +611,6 @@ watch(uploadMode, (val) => {
   uploadTaskStatus.value = {}
   uploadTaskProgress.value = {}
   progressExpanded.value = false
-  if (val === 'workspace') {
-    loadWorkspaceFiles('/')
-  }
 })
 
 watch(fileList, (newFileList) => {
@@ -820,67 +726,11 @@ const removeUrl = (index) => {
   urlList.value.splice(index, 1)
 }
 
-// 工作区文件选择
-const workspaceLoading = ref(false)
-const workspaceItems = ref([])
-const workspaceCurrentPath = ref('/')
-const selectedWorkspacePaths = ref([])
-const selectedWorkspacePathSet = computed(() => new Set(selectedWorkspacePaths.value))
-const workspaceDirectoryItems = computed(() => workspaceItems.value.filter((entry) => entry.is_dir))
-const workspaceFileItems = computed(() =>
-  workspaceItems.value
-    .filter((entry) => !entry.is_dir)
-    .map((entry) => ({
-      ...entry,
-      supported: isSupportedExtension(entry.name || entry.path)
-    }))
-)
-
 const formatFileSize = (size) => {
   if (!Number.isFinite(size)) return '-'
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / 1024 / 1024).toFixed(1)} MB`
-}
-
-const loadWorkspaceFiles = async (path = workspaceCurrentPath.value) => {
-  if (workspaceLoading.value) return
-  const targetPath = typeof path === 'string' ? path : workspaceCurrentPath.value
-
-  workspaceLoading.value = true
-  try {
-    const data = await getWorkspaceTree(targetPath, false, false)
-    const entries = Array.isArray(data?.entries) ? data.entries : []
-    workspaceCurrentPath.value = targetPath
-    workspaceItems.value = entries
-  } catch (error) {
-    console.error('加载工作区文件失败:', error)
-    message.error('加载工作区文件失败: ' + (error.message || '未知错误'))
-  } finally {
-    workspaceLoading.value = false
-  }
-}
-
-const openWorkspaceDirectory = (path) => {
-  loadWorkspaceFiles(path)
-}
-
-const openWorkspaceParent = () => {
-  if (workspaceCurrentPath.value === '/') return
-  const normalized = workspaceCurrentPath.value.replace(/\/$/, '')
-  const index = normalized.lastIndexOf('/')
-  const parentPath = index <= 0 ? '/' : normalized.slice(0, index)
-  loadWorkspaceFiles(parentPath)
-}
-
-const toggleWorkspacePath = (path, checked) => {
-  if (checked) {
-    if (!selectedWorkspacePaths.value.includes(path)) {
-      selectedWorkspacePaths.value = [...selectedWorkspacePaths.value, path]
-    }
-    return
-  }
-  selectedWorkspacePaths.value = selectedWorkspacePaths.value.filter((item) => item !== path)
 }
 
 // OCR服务健康状态
@@ -1436,68 +1286,6 @@ const chunkData = async () => {
 
   // 验证OCR服务可用性（非 URL 模式下）
   if (uploadMode.value !== 'url' && !validateOcrService()) {
-    return
-  }
-
-  if (uploadMode.value === 'workspace') {
-    if (selectedWorkspacePaths.value.length === 0) {
-      message.error('请先选择工作区文件')
-      return
-    }
-
-    try {
-      store.state.chunkLoading = true
-      const res = await fileApi.importWorkspaceFiles(kbId.value, selectedWorkspacePaths.value)
-      const importedItems = Array.isArray(res?.items) ? res.items : []
-      if (importedItems.length === 0) {
-        message.error('工作区文件导入失败')
-        return
-      }
-
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif']
-      const items = []
-      const content_hashes = {}
-      const file_sizes = {}
-      for (const item of importedItems) {
-        const filePath = item.file_path
-        if (!filePath) continue
-        items.push(filePath)
-        if (item.content_hash) content_hashes[filePath] = item.content_hash
-        if (Number.isFinite(item.size)) file_sizes[filePath] = item.size
-        mergeSameNameFiles(item.same_name_files)
-
-        const ext = filePath.substring(filePath.lastIndexOf('.')).toLowerCase()
-        if (imageExtensions.includes(ext) && !isOcrEnabled.value) {
-          message.error({
-            content: '检测到图片文件，必须启用 OCR 才能提取文本内容。',
-            duration: 5
-          })
-          return
-        }
-      }
-
-      const params = { ...processingParams.value, content_hashes, file_sizes }
-      if (autoIndex.value) {
-        params.auto_index = true
-        Object.assign(params, buildAutoIndexParams())
-      }
-
-      await store.addFiles({
-        items,
-        contentType: 'file',
-        params,
-        parentId: selectedFolderId.value
-      })
-
-      emit('success')
-      handleCancel()
-      selectedWorkspacePaths.value = []
-    } catch (error) {
-      console.error('工作区文件导入失败:', error)
-      message.error('工作区文件导入失败: ' + (error.message || '未知错误'))
-    } finally {
-      store.state.chunkLoading = false
-    }
     return
   }
 
@@ -2201,107 +1989,6 @@ const chunkData = async () => {
     color: var(--main-600);
     background: var(--gray-100);
   }
-}
-
-/* Workspace Area */
-.workspace-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.workspace-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.workspace-summary {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--gray-700);
-  min-width: 0;
-}
-
-.workspace-current-path {
-  max-width: 360px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
-}
-
-.workspace-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.workspace-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-  border: 1px solid var(--gray-200);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--gray-0);
-}
-
-.workspace-item {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  gap: 8px;
-  min-height: 34px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.2s;
-
-  &:hover {
-    background: var(--gray-50);
-  }
-
-  &.disabled {
-    cursor: not-allowed;
-    color: var(--gray-400);
-  }
-}
-
-.workspace-directory {
-  color: var(--gray-800);
-}
-
-.workspace-file-icon {
-  flex-shrink: 0;
-  color: var(--main-500);
-}
-
-.workspace-file-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  color: var(--gray-700);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-file-size {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--gray-500);
 }
 
 /* URL Area */

@@ -45,11 +45,15 @@ docker compose up --build
 cp .env.template .env.prod
 ```
 
-编辑 `.env.prod`，设置强密码和必要的 API 密钥：
+编辑 `.env.prod`，设置生产环境启动前必须存在的部署级配置：
 
+- `JWT_SECRET_KEY` / `YUXI_INSTANCE_ID`：生成持久化随机值，不要每次部署变化
+- `POSTGRES_PASSWORD` / `POSTGRES_URL`：修改默认数据库密码，并保持连接串一致
 - `NEO4J_PASSWORD`：修改默认密码
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`：修改默认密钥
-- `SILICONFLOW_API_KEY` 等模型密钥
+- `YUXI_CORS_ORIGINS`：仅跨域部署时设置
+
+模型供应商 Key、OCR Key、Tavily 搜索 Key、URL 解析白名单、默认模型与默认 OCR 引擎不再建议写入 `.env.prod`。服务启动后，使用超级管理员登录后台，在「基本设置」和「模型供应商」中维护这些运行时业务配置。
 
 #### 2. 启动服务
 

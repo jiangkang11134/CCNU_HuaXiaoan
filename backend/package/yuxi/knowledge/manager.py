@@ -662,6 +662,11 @@ class KnowledgeBaseManager:
         kb_instance = await self._get_kb_for_database(kb_id)
         return await kb_instance.repair_missing_file_stats(kb_id)
 
+    async def repair_file_display_metadata(self, kb_id: str) -> dict:
+        """从 MinIO URL 修复历史文件展示名称、类型和缺失大小。"""
+        kb_instance = await self._get_kb_for_database(kb_id)
+        return await kb_instance.repair_file_display_metadata(kb_id)
+
     async def get_file_basic_info(self, kb_id: str, file_id: str) -> dict:
         """获取文件基本信息（仅元数据）"""
         kb_instance = await self._get_kb_for_database(kb_id)

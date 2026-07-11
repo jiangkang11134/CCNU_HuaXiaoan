@@ -322,7 +322,7 @@ export const threadApi = {
     apiGet(threadApi.getThreadArtifactUrl(threadId, path, true), {}, true, 'blob'),
 
   /**
-   * 保存交付物到 workspace/saved_artifacts
+   * 保存交付物到对话文件区
    * @param {string} threadId
    * @param {string} path
    * @returns {Promise}

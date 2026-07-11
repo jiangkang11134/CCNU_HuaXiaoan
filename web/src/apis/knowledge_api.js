@@ -239,6 +239,16 @@ export const documentApi = {
   },
 
   /**
+   * 预览知识库原始文件或解析结果
+   * @param {string} kbId - 知识库 ID
+   * @param {string} docId - 文档 ID
+   * @returns {Promise<Response>} - 预览响应
+   */
+  previewDocument: async (kbId, docId) => {
+    return apiAdminGet(`/api/knowledge/databases/${kbId}/documents/${docId}/preview`, {}, 'blob')
+  },
+
+  /**
    * 手动触发文档解析
    * @param {string} kbId - 知识库ID
    * @param {Array} fileIds - 文件ID列表
@@ -431,19 +441,6 @@ export const fileApi = {
     return apiAdminPost('/api/knowledge/files/fetch-url', {
       url,
       kb_id: kbId
-    })
-  },
-
-  /**
-   * 从工作区导入文件到知识库 MinIO 暂存区
-   * @param {string} kbId - 知识库 ID
-   * @param {Array<string>} paths - 工作区文件路径
-   * @returns {Promise} - 导入结果
-   */
-  importWorkspaceFiles: async (kbId, paths) => {
-    return apiAdminPost('/api/knowledge/files/import-workspace', {
-      kb_id: kbId,
-      paths
     })
   },
 

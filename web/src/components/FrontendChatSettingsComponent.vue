@@ -22,7 +22,7 @@
               <a-input v-model:value="config.organization_logo" placeholder="/favicon.svg" />
             </a-form-item>
             <a-form-item label="登录页背景">
-              <a-input v-model:value="config.login_bg" placeholder="/login-bg.jpg" />
+              <a-input v-model:value="config.login_bg" placeholder="/lab-safety-login-bg.svg" />
             </a-form-item>
             <a-form-item label="浏览器标题">
               <a-input v-model:value="config.browser_title" placeholder="语析 - Knowledge Management" />
@@ -114,7 +114,7 @@ const DEFAULT_CONFIG = {
   organization_name: '江南语析',
   organization_avatar: '/avatar.jpg',
   organization_logo: '/favicon.svg',
-  login_bg: '/login-bg.jpg',
+  login_bg: '/lab-safety-login-bg.svg',
   browser_title: '语析 - Knowledge Management',
   system_name: '智能AI对话系统',
   welcome_title_mode: 'dynamic',
