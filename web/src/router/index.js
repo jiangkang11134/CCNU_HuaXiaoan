@@ -87,12 +87,6 @@ const router = createRouter({
           name: 'LabSafetyRecognition',
           component: () => import('../views/LabSafetyRecognitionView.vue'),
           meta: { keepAlive: false, requiresAuth: true }
-        },
-        {
-          path: ':thread_id',
-          name: 'LabSafetyRecognitionWithThreadId',
-          component: () => import('../views/LabSafetyRecognitionView.vue'),
-          meta: { keepAlive: false, requiresAuth: true }
         }
       ]
     },

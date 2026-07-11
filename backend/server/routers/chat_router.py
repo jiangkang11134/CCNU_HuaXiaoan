@@ -17,6 +17,7 @@ from server.utils.frontend_portal_policy import (
 )
 from yuxi import config as conf
 from yuxi.models import select_model
+from yuxi.services.input_message_service import build_chat_input_message
 from yuxi.services.chat_service import get_agent_state_view
 from yuxi.services.conversation_service import (
     confirm_tmp_thread_attachments_view,
@@ -61,7 +62,33 @@ class ImageUploadResponse(BaseModel):
     error: str | None = None
 
 
+class LabSafetyRecognitionRequest(BaseModel):
+    image_content: str = Field(..., description="base64 图片内容")
+    note: str | None = Field(None, description="实验室现场补充说明")
+
+
+class LabSafetyRecognitionResponse(BaseModel):
+    success: bool
+    result: str
+
+
 chat = APIRouter(prefix="/chat", tags=["chat"])
+
+LAB_SAFETY_PORTAL_FEATURE = "lab_safety_recognition"
+LAB_SAFETY_INSPECTION_PROMPT = """请基于我上传的实验室现场图片进行安全隐患识别。
+
+请严格围绕图片中可见内容输出：
+1. 隐患清单：逐项说明隐患位置、可见依据、风险等级（高/中/低）和可能后果。
+2. 整改建议：给出可执行的整改措施，区分立即处理和后续完善。
+3. 复查要点：列出整改后需要复查的关键点。
+4. 无法确认项：对于图片无法判断的信息明确标注“无法确认”，不要编造。"""
+
+
+def _build_lab_safety_prompt(note: str | None) -> str:
+    normalized_note = (note or "").strip()
+    if normalized_note:
+        return f"{LAB_SAFETY_INSPECTION_PROMPT}\n\n补充现场信息：{normalized_note}"
+    return LAB_SAFETY_INSPECTION_PROMPT
 
 
 @chat.post("/call")
@@ -82,6 +109,28 @@ async def call(query: str = Body(...), meta: dict = Body(None), current_user: Us
     logger.debug({"query": query, "response": response.content})
 
     return {"response": response.content, "request_id": meta["request_id"]}
+
+
+@chat.post("/lab-safety/recognize", response_model=LabSafetyRecognitionResponse)
+async def recognize_lab_safety(
+    payload: LabSafetyRecognitionRequest,
+    current_user: User = Depends(get_required_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """执行实验室安全隐患图片识别，不创建对话线程。"""
+    await ensure_frontend_image_upload_allowed(
+        db,
+        current_user,
+        portal_feature=LAB_SAFETY_PORTAL_FEATURE,
+    )
+    prompt = _build_lab_safety_prompt(payload.note)
+    input_message = build_chat_input_message(prompt, payload.image_content)
+    model = select_model(model_spec=conf.default_model)
+    response = await model.call([input_message.require_langchain_message()])
+    result = str(response.content or "").strip()
+    if not result:
+        raise HTTPException(status_code=502, detail="识别服务未返回有效结果")
+    return LabSafetyRecognitionResponse(success=True, result=result)
 
 
 @chat.get("/thread/{thread_id}/history")

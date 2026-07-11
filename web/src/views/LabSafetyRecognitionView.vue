@@ -57,6 +57,20 @@
         >
           开始识别
         </a-button>
+
+        <div v-if="recognitionResult || recognitionError" class="inline-result" aria-label="识别结果">
+          <div class="inline-result-header">
+            <ShieldCheck :size="17" />
+            <span>识别结果</span>
+          </div>
+          <a-alert
+            v-if="recognitionError"
+            type="error"
+            show-icon
+            :message="recognitionError"
+          />
+          <div v-else class="result-content">{{ recognitionResult }}</div>
+        </div>
       </section>
 
       <section class="criteria-panel" aria-label="识别维度">
@@ -73,43 +87,19 @@
       </section>
     </div>
 
-    <div class="lab-safety-chat">
-      <AgentChatComponent
-        ref="chatComponentRef"
-        :single-mode="false"
-        :frontend-config="frontendConfig"
-        @thread-change="handleThreadChange"
-      >
-        <template #header-left>
-          <div class="chat-business-title">
-            <ShieldCheck :size="17" />
-            <span>识别结果</span>
-          </div>
-        </template>
-      </AgentChatComponent>
-    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { message } from 'ant-design-vue'
-import { useRoute, useRouter } from 'vue-router'
 import { AlertTriangle, FlaskConical, Flame, ImageUp, ShieldCheck, X, Zap } from 'lucide-vue-next'
-import AgentChatComponent from '@/components/AgentChatComponent.vue'
+import { labSafetyApi } from '@/apis/agent_api'
 import { useAgentStore } from '@/stores/agent'
 import { useUserStore } from '@/stores/user'
 import { uploadMultimodalImage } from '@/utils/multimodal_image_upload'
 
 const LAB_SAFETY_PORTAL_FEATURE = 'lab_safety_recognition'
-
-const LAB_SAFETY_INSPECTION_PROMPT = `请基于我上传的实验室现场图片进行安全隐患识别。
-
-请严格围绕图片中可见内容输出：
-1. 隐患清单：逐项说明隐患位置、可见依据、风险等级（高/中/低）和可能后果。
-2. 整改建议：给出可执行的整改措施，区分立即处理和后续完善。
-3. 复查要点：列出整改后需要复查的关键点。
-4. 无法确认项：对于图片无法判断的信息明确标注“无法确认”，不要编造。`
 
 const criteriaItems = [
   { title: '化学品与试剂', description: '标签、存放、泄漏和混放风险', icon: FlaskConical },
@@ -120,16 +110,14 @@ const criteriaItems = [
 
 const agentStore = useAgentStore()
 const userStore = useUserStore()
-const route = useRoute()
-const router = useRouter()
 
-const chatComponentRef = ref(null)
 const fileInputRef = ref(null)
 const selectedFile = ref(null)
 const imagePreviewUrl = ref('')
 const isSubmitting = ref(false)
 const inspectionNote = ref('')
-const frontendConfig = computed(() => (userStore.isChatOnlyUser ? agentStore.frontendChatConfig : null))
+const recognitionResult = ref('')
+const recognitionError = ref('')
 
 const activeFeatureEnabled = computed(
   () => !userStore.isChatOnlyUser || agentStore.frontendChatConfig?.show_lab_safety_recognition === true
@@ -171,11 +159,6 @@ const clearImage = () => {
   selectedFile.value = null
 }
 
-const buildInspectionPrompt = () => {
-  const note = inspectionNote.value.trim()
-  return note ? `${LAB_SAFETY_INSPECTION_PROMPT}\n\n补充现场信息：${note}` : LAB_SAFETY_INSPECTION_PROMPT
-}
-
 const submitInspection = async () => {
   if (!selectedFile.value) {
     message.error('请先上传实验室现场图片')
@@ -196,49 +179,22 @@ const submitInspection = async () => {
     if (!imageData?.imageContent) {
       throw new Error('图片处理失败，未返回可识别内容')
     }
-    await chatComponentRef.value?.sendPresetMessage({
-      text: buildInspectionPrompt(),
-      image: imageData,
-      meta: { portal_feature: LAB_SAFETY_PORTAL_FEATURE }
+    recognitionResult.value = ''
+    recognitionError.value = ''
+    const response = await labSafetyApi.recognize({
+      imageContent: imageData.imageContent,
+      note: inspectionNote.value
     })
+    recognitionResult.value = response.result || ''
     clearImage()
     inspectionNote.value = ''
-    await nextTick()
   } catch (error) {
-    message.error(error.message || '安全隐患识别提交失败')
+    recognitionError.value = error.message || '安全隐患识别提交失败'
+    message.error(recognitionError.value)
   } finally {
     isSubmitting.value = false
   }
 }
-
-const handleThreadChange = (threadId) => {
-  const currentRouteThreadId = typeof route.params.thread_id === 'string' ? route.params.thread_id : ''
-  const nextThreadId = threadId || ''
-  if (currentRouteThreadId === nextThreadId) return
-  if (nextThreadId) {
-    router.replace({ name: 'LabSafetyRecognitionWithThreadId', params: { thread_id: nextThreadId } })
-    return
-  }
-  router.replace({ name: 'LabSafetyRecognition' })
-}
-
-watch(
-  () => route.params.thread_id,
-  async (threadId) => {
-    const value = typeof threadId === 'string' ? threadId : ''
-    const ok = await chatComponentRef.value?.selectThreadFromRoute?.(value)
-    if (value && ok === false) {
-      await router.replace({ name: 'LabSafetyRecognition' })
-    }
-  },
-  { immediate: true }
-)
-
-watch(chatComponentRef, (instance) => {
-  if (!instance) return
-  const threadId = typeof route.params.thread_id === 'string' ? route.params.thread_id : ''
-  void instance.selectThreadFromRoute?.(threadId)
-})
 
 onBeforeUnmount(() => {
   clearImage()
@@ -247,23 +203,23 @@ onBeforeUnmount(() => {
 
 <style lang="less" scoped>
 .lab-safety-view {
-  display: grid;
-  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  display: block;
   width: 100%;
   height: 100%;
   min-height: 0;
   background: var(--main-0);
+  overflow-y: auto;
 }
 
 .lab-safety-panel {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  width: min(460px, calc(100% - 36px));
   min-height: 0;
+  margin: 0 auto;
   padding: 18px;
-  border-right: 1px solid var(--gray-100);
   background: var(--gray-10);
-  overflow-y: auto;
 }
 
 .inspection-panel,
@@ -392,6 +348,33 @@ onBeforeUnmount(() => {
   gap: 10px;
 }
 
+.inline-result {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-100);
+}
+
+.inline-result-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 10px;
+  color: var(--gray-900);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.result-content {
+  white-space: pre-wrap;
+  color: var(--gray-800);
+  background: var(--gray-25);
+  border: 1px solid var(--gray-100);
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.75;
+}
+
 .criteria-item {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr);
@@ -416,34 +399,9 @@ onBeforeUnmount(() => {
   }
 }
 
-.lab-safety-chat {
-  min-width: 0;
-  min-height: 0;
-}
-
-.chat-business-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--gray-800);
-  font-size: 14px;
-  font-weight: 650;
-}
-
-:deep(.chat-container) {
-  height: 100%;
-}
-
 @media (max-width: 980px) {
-  .lab-safety-view {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(520px, 1fr);
-    overflow-y: auto;
-  }
-
   .lab-safety-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--gray-100);
+    width: 100%;
   }
 }
 </style>

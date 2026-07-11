@@ -84,7 +84,7 @@ const activeConversationThreadId = computed(() => {
   return route.path.startsWith('/front/agent') ? currentThreadId.value : null
 })
 const showConversationNavigation = computed(
-  () => !userStore.isAdmin && route.path.startsWith('/front/agent')
+  () => !userStore.isAdmin && (route.path.startsWith('/front/agent') || route.path.startsWith('/front/lab-safety'))
 )
 const organizationName = computed(() => {
   return infoStore.organization.name || infoStore.branding.name || '实验室安全教育智能对话平台'
@@ -275,7 +275,10 @@ const handleTogglePinChat = async (threadId) => {
 watch(
   () => [route.path, route.params.thread_id],
   () => {
-    if (!route.path.startsWith('/front/agent')) return
+    if (!route.path.startsWith('/front/agent')) {
+      chatThreadsStore.setCurrentThreadId(null)
+      return
+    }
     const threadId = typeof route.params.thread_id === 'string' ? route.params.thread_id : null
     chatThreadsStore.setCurrentThreadId(threadId)
   },

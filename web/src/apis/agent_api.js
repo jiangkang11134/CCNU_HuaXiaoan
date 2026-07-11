@@ -184,6 +184,14 @@ export const multimodalApi = {
   }
 }
 
+export const labSafetyApi = {
+  recognize: ({ imageContent, note = '' }) =>
+    apiPost('/api/chat/lab-safety/recognize', {
+      image_content: imageContent,
+      note
+    })
+}
+
 // =============================================================================
 // === 对话线程分组 ===
 // =============================================================================
