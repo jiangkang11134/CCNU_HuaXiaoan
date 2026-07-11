@@ -1775,7 +1775,10 @@ async def fetch_url(
             if file_exists:
                 raise HTTPException(
                     status_code=409,
-                    detail="数据库中已经存在了相同内容文件",
+                    detail={
+                        "code": "duplicate_content",
+                        "message": "数据库中已经存在了相同内容文件",
+                    },
                 )
 
         # 3. 上传到 MinIO
@@ -1861,7 +1864,10 @@ async def upload_file(
     if file_exists:
         raise HTTPException(
             status_code=409,
-            detail="数据库中已经存在了相同内容文件，File with the same content already exists in this database",
+            detail={
+                "code": "duplicate_content",
+                "message": "数据库中已经存在了相同内容文件",
+            },
         )
 
     # 直接上传到MinIO，添加时间戳区分版本

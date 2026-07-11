@@ -1,133 +1,238 @@
-# Yuxi 知识问答平台
+# 实验室安全教育智能对话平台
 
-本项目是面向前台多用户、后台单用户运营管理场景的知识问答平台。系统基于 Yuxi 的知识库、智能体、数据看板、用户角色与部门管理能力，整合了原业务中的前台问答入口、后台运营配置和权限控制逻辑。
+本项目是面向实验室安全教育场景的知识问答与安全隐患识别平台。系统以前台多普通用户问答、后台单管理员运营管理为核心业务形态，基于 Yuxi 的知识库、智能体、数据看板、用户管理、部门管理和模型管理能力进行了业务整合。
 
-## 业务定位
+## 业务逻辑
 
-- 前台用户通过问答入口使用知识库与智能体能力。
-- 后台管理员维护知识库、模型、用户、部门、权限和前台展示配置。
-- 知识库文件需要在新系统中重新上传，系统按新的 Yuxi 数据结构重新入库。
-- FAQ、问答对、智能体执行等基础能力沿用 Yuxi 现有实现。
+- 前台只面向普通用户，用户身份收敛为学生、教职工等普通问答用户。
+- 后台只允许系统管理员登录，负责系统配置、知识库维护、模型供应商、用户、部门、前端展示和运行日志管理。
+- 系统是单租户业务，不做多租户运营隔离。
+- 前台提供智能问答和实验室安全隐患识别入口。
+- 后台不承载对话业务，不展示创建对话、搜索对话、最近对话等前台问答逻辑。
+- 知识库、问答对、智能体执行、图谱、数据看板等底层能力沿用现有实现。
+- 页面标题、侧边栏头像、Logo、前后台展示文字等由后台「前端配置」统一维护。
 
-## 快速开始
+## 核心模块
 
-```bash
-cd Yuxi
-./scripts/init.sh
-docker compose up --build
-```
+| 模块 | 说明 |
+| --- | --- |
+| 前台问答 | 普通用户登录后进行知识库问答，按前端配置控制思考过程、引用文档等回答展示。 |
+| 安全隐患识别 | 面向实验室安全图片的隐患识别页面，识别结果直接在页面展示。 |
+| 数据总揽 | 后台默认进入的数据看板，展示系统运行和知识库相关统计。 |
+| 知识库管理 | 创建知识库、上传文件、解析、入库、预览、生成知识导图和测试问题。 |
+| 智能体管理 | 管理智能体、模型和提示词扩展配置。 |
+| 基本设置 | 配置默认模型、解析配置、内容审查等系统运行参数。 |
+| 前端配置 | 配置系统名称、网页标题、侧边栏头像、Logo、前台功能开关和回答展示。 |
+| 用户管理 | 管理系统管理员和普通用户。 |
+| 部门管理 | 管理用户部门信息。 |
+| 运行日志 | 查看系统运行和调试信息。 |
 
-启动后访问本地 Web 服务，按初始化流程创建管理员账号并登录后台。
+## 知识库文件上传
 
-## 生产部署指南
+后台知识库上传支持 PDF、Word、Excel、PPT、Markdown、文本、图片等文件类型。批量上传采用前端队列控制，同一时间最多上传 2 个文件，避免多个大 PDF 同时上传导致 API、MinIO 或容器内存压力过高。
 
-本文档介绍如何在生产环境中部署 Yuxi。
+推荐流程：
+
+1. 在后台进入「知识库管理」。
+2. 创建或打开目标知识库。
+3. 点击上传，选择文件或文件夹。
+4. 等待所有文件上传完成。
+5. 点击提交处理，系统会创建后台解析任务。
+6. 在任务中心或文件状态中查看解析、入库结果。
+
+注意事项：
+
+- 单文件默认最大 100 MB，生产 Nginx 和后端上传限制保持一致。
+- 重复内容文件会被明确拒绝，页面会提示已存在相同内容。
+- PDF 或图片需要 OCR 时，请先在「基本设置 / 解析配置」配置对应 OCR 服务。
+- 大批量文件建议分批上传，先确认解析配置和模型配置可用后再上传全量文件。
+- 更新代码或重新部署不要删除数据目录，否则会丢失已上传文件、索引、用户和配置数据。
+
+## 生产部署
 
 ### 前置要求
 
-- Docker Engine (v24.0+)
-- Docker Compose (v2.20+)
-- NVIDIA Container Toolkit（如需使用 GPU 服务）
+- Docker Engine 24.0+
+- Docker Compose 2.20+
+- 如需本地 GPU OCR 服务，额外安装 NVIDIA Container Toolkit
 
-### 注意事项
-
-1. 生产环境和开发环境建议使用不同的机器，避免端口和资源冲突。
-2. 虽然名为「生产环境」，但这只是基本配置，真正上线需要根据实际情况调整。
-3. 前端有调试面板（长按侧边栏触发），生产环境建议关闭。
-
-### 部署步骤
-
-#### 1. 准备配置文件
-
-为避免与开发环境冲突，生产环境建议使用 `.env.prod` 文件：
+### 首次部署
 
 ```bash
-./scripts/init_prod_env.sh
-```
+set -e
 
-编辑 `.env.prod`，设置生产环境启动前必须存在的部署级配置：
-
-- `JWT_SECRET_KEY` / `YUXI_INSTANCE_ID`：由初始化脚本生成持久化随机值，不要每次部署变化
-- `YUXI_DATA_DIR`：生产数据目录，建议放在代码目录外，例如 `/root/yuxi-data`
-- `POSTGRES_PASSWORD` / `POSTGRES_URL`：修改默认数据库密码，并保持连接串一致
-- `NEO4J_PASSWORD`：修改默认密码
-- `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`：修改默认密钥
-- `YUXI_CORS_ORIGINS`：仅跨域部署时设置
-
-模型供应商 Key、OCR Key、Tavily 搜索 Key、URL 解析白名单、默认模型与默认 OCR 引擎不再建议写入 `.env.prod`。服务启动后，使用系统管理员登录后台，在「基本设置」和「模型供应商」中维护这些运行时业务配置。
-
-`docker-compose.prod.yml` 默认把数据库、MinIO、Milvus、Neo4j、Redis、系统上传资源等数据挂载到 `${YUXI_DATA_DIR}`。更新或重新拉取代码时不要删除该目录，否则会丢失知识库文件、索引、用户数据和后台上传的品牌图片。
-
-#### 2. 启动服务
-
-使用生产环境配置文件启动：
-
-```bash
-# 仅启动核心服务（CPU 模式）
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
-
-# 启动所有服务（包含 GPU OCR）
-docker compose -f docker-compose.prod.yml --env-file .env.prod --profile all up -d --build
-```
-
-#### 3. 验证部署
-
-- Web 访问：`http://localhost`（直接通过 80 端口）
-- API 健康检查：
-
-```bash
-curl http://localhost/api/system/health
-```
-
-### 跨域（CORS）配置
-
-`docker-compose.prod.yml` 默认把 `YUXI_ENV` 设为 `production`，后端在该环境下会按 `YUXI_CORS_ORIGINS` 显式声明允许的来源。未配置时返回空列表，浏览器跨域请求会被拒绝。生产部署前请根据前端与 API 的相对位置选择策略：
-
-| 部署形态 | 推荐配置 |
-| --- | --- |
-| 前端与 API 同源（Nginx 同端口反代） | 不需要设置，留空即可 |
-| 前端与 API 跨域部署 | `YUXI_CORS_ORIGINS=https://your-frontend.example.com` |
-| 多个前端域名 | 逗号分隔，如 `https://a.example.com,https://b.example.com` |
-| 完全放开（不推荐） | `YUXI_CORS_ORIGINS=*`，会自动关闭 credentials，登录态/JWT 无法跨域携带 |
-
-开发环境（`YUXI_ENV=development` 且未设置该变量）默认允许 `http://localhost:5173` 与 `http://127.0.0.1:5173`，方便本地前后端独立启动调试。从 0.7.0 升级到 0.7.1 时，如果此前是跨域部署但未显式声明来源，必须补上 `YUXI_CORS_ORIGINS`，否则前端跨域请求会被拒绝。
-
-### 维护与更新
-
-更新代码：
-
-```bash
-# 已在 Yuxi 目录内时
-git pull
-./scripts/deploy_prod.sh
-```
-
-服务器首次部署或必须重新拉取代码时，优先复用已有数据目录。已有 `/root/Yuxi/docker/volumes` 数据的服务器不要改 `YUXI_DATA_DIR`，否则旧库和文件不会被当前容器挂载到：
-
-```bash
-export YUXI_DIR=/root/Yuxi
-export YUXI_REPO=https://gitee.com/lqxtime/yuxi.git
+YUXI_DIR="/root/Yuxi"
+YUXI_REPO="https://gitee.com/lqxtime/yuxi.git"
 
 if [ ! -d "$YUXI_DIR/.git" ]; then
   git clone "$YUXI_REPO" "$YUXI_DIR"
 fi
 
 cd "$YUXI_DIR"
-git pull
 ./scripts/init_prod_env.sh
-./scripts/deploy_prod.sh
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+curl -i http://127.0.0.1/api/system/health
 ```
 
-全新服务器可以在执行 `./scripts/init_prod_env.sh` 前设置 `YUXI_DATA_DIR=/root/yuxi-data`，把生产数据放到代码目录外。
+首次部署后访问：
+
+- 前台：`http://你的域名或服务器IP`
+- 后台：`http://你的域名或服务器IP/back/login`
+
+### 生产配置
+
+生产环境使用 `.env.prod`。首次部署会从 `.env.template` 生成配置文件，并写入必要的持久化配置。
+
+必须重点确认：
+
+- `JWT_SECRET_KEY`：生产 JWT 密钥，生成后不要每次部署变化。
+- `YUXI_INSTANCE_ID`：实例 ID，生成后保持稳定。
+- `YUXI_DATA_DIR`：生产数据目录，默认是 `./docker/volumes`。
+- `POSTGRES_PASSWORD` / `POSTGRES_URL`：数据库密码和连接串必须一致。
+- `NEO4J_PASSWORD`：Neo4j 密码。
+- `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`：MinIO 密钥。
+- `YUXI_CORS_ORIGINS`：前后端跨域部署时才需要设置。
+
+模型 Key、OCR Key、Tavily Key、默认模型、默认 OCR 引擎、URL 解析白名单等运行时业务配置，优先在后台「基本设置」「模型供应商」中维护。
+
+## 保留旧数据更新部署
+
+日常更新使用下面命令。该命令不会删除 Docker volume，也不会删除 `${YUXI_DATA_DIR}`，会保留旧知识库文件、索引、用户和后台配置。
+
+```bash
+set -e
+
+YUXI_DIR="/root/Yuxi"
+
+echo "========================================"
+echo "1. 进入 Yuxi 目录"
+echo "========================================"
+cd "$YUXI_DIR"
+
+echo "========================================"
+echo "2. 备份生产配置"
+echo "========================================"
+if [ -f .env.prod ]; then
+  cp .env.prod ".env.prod.bak.$(date +%Y%m%d%H%M%S)"
+else
+  cp .env.template .env.prod
+fi
+
+echo "========================================"
+echo "3. 拉取最新代码"
+echo "========================================"
+git fetch origin main
+git reset --hard origin/main
+
+echo "========================================"
+echo "4. 初始化生产配置"
+echo "========================================"
+./scripts/init_prod_env.sh
+
+echo "========================================"
+echo "5. 重新构建并启动生产容器"
+echo "========================================"
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+
+echo "========================================"
+echo "6. 等待 API 健康状态"
+echo "========================================"
+for i in $(seq 1 60); do
+  STATUS="$(docker inspect -f '{{.State.Health.Status}}' api-prod 2>/dev/null || true)"
+  echo "api-prod health: ${STATUS:-unknown}"
+  if [ "$STATUS" = "healthy" ]; then
+    break
+  fi
+  sleep 3
+done
+
+echo "========================================"
+echo "7. 查看容器状态"
+echo "========================================"
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+
+echo "========================================"
+echo "8. 健康检查"
+echo "========================================"
+curl -i http://127.0.0.1/api/system/health || true
+
+echo "========================================"
+echo "部署完成"
+echo "前台: http://yuxi.mergeai.online"
+echo "后台: http://yuxi.mergeai.online/back/login"
+echo "========================================"
+```
+
+禁止在日常更新中执行：
+
+```bash
+docker compose down -v
+rm -rf "$YUXI_DATA_DIR"
+rm -rf /root/Yuxi/docker/volumes
+```
+
+这些命令会删除数据库、MinIO 文件、Milvus 索引等生产数据。
+
+## 健康检查和排障命令
+
+查看容器状态：
+
+```bash
+cd /root/Yuxi
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
+```
+
+检查 API：
+
+```bash
+curl -i http://127.0.0.1/api/system/health
+docker inspect -f '{{.State.Health.Status}}' api-prod
+```
 
 查看日志：
 
 ```bash
-# API 日志
 docker logs -f api-prod
-
-# Nginx 访问日志
+docker logs -f worker-prod
 docker logs -f web-prod
+docker logs -f minio
+docker logs -f postgres
+```
+
+查看 80 端口占用：
+
+```bash
+ss -lntp | grep ':80 ' || true
+```
+
+检查生产配置关键项：
+
+```bash
+cd /root/Yuxi
+grep -E '^(YUXI_ENV|YUXI_DATA_DIR|JWT_SECRET_KEY|YUXI_INSTANCE_ID|POSTGRES_URL|MINIO_URI|YUXI_CORS_ORIGINS)=' .env.prod
+```
+
+知识库上传失败时优先查看：
+
+```bash
+docker logs --tail=200 api-prod
+docker logs --tail=200 worker-prod
+docker logs --tail=200 minio
+```
+
+如果浏览器提示 413 或文件刚开始上传就失败，优先检查 Web 容器内 Nginx 配置：
+
+```bash
+docker exec web-prod nginx -T | grep client_max_body_size
+```
+
+## 本地开发
+
+```bash
+cd Yuxi
+./scripts/init.sh
+docker compose up --build
 ```
 
 ## 目录说明
@@ -136,17 +241,9 @@ docker logs -f web-prod
 | --- | --- |
 | `web` | 前端应用 |
 | `backend` | 后端服务 |
-| `docs` | 本地项目文档 |
+| `docs` | 项目文档 |
 | `scripts` | 初始化、部署和维护脚本 |
 | `packages` | CLI 等附属包 |
-
-## 使用说明
-
-1. 初始化系统并创建系统管理员。
-2. 在后台完成模型供应商、解析服务和知识库配置。
-3. 创建或导入用户，并按角色、部门配置可访问范围。
-4. 重新上传知识库文件，等待解析和索引完成。
-5. 在前台使用问答入口验证检索和回答效果。
 
 ## 许可证
 

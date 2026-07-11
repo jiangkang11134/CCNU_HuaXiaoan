@@ -509,7 +509,7 @@ const chunkLoading = computed(() => store.state.chunkLoading)
 
 // 上传模式
 const uploadMode = ref('file')
-const MAX_UPLOAD_CONCURRENCY = 10
+const MAX_UPLOAD_CONCURRENCY = 2
 
 // 文件列表
 const fileList = ref([])
@@ -548,7 +548,7 @@ const overallUploadProgress = computed(() => {
   return Math.round(sum / total)
 })
 
-const showAggregateProgress = computed(() => totalUploadCount.value >= MAX_UPLOAD_CONCURRENCY)
+const showAggregateProgress = computed(() => totalUploadCount.value > 1)
 
 const failedDetailItems = computed(() => {
   return fileList.value
@@ -638,6 +638,7 @@ watch(fileList, (newFileList) => {
 const urlList = ref([])
 const newUrl = ref('')
 const fetchingUrls = ref(false)
+const CONTENT_EXISTS_ERROR_CODE = 'duplicate_content'
 const CONTENT_EXISTS_ERROR_TEXT = '内容已存在于知识库中'
 
 // 同名文件列表（用于显示提示）
@@ -676,7 +677,7 @@ const fetchSingleUrlItem = async (item) => {
     const detailData = error.response?.data?.detail
     const detailMessage =
       (typeof detailData === 'string' ? detailData : detailData?.message) || error.message || ''
-    if (detailMessage.includes('same content') || detailMessage.includes('相同内容')) {
+    if (detailData?.code === CONTENT_EXISTS_ERROR_CODE) {
       item.error = CONTENT_EXISTS_ERROR_TEXT
       mergeSameNameFiles(detailData?.same_name_files)
     } else {
@@ -1060,7 +1061,7 @@ const deleteSameNameFile = (file) => {
   })
 }
 
-const customRequest = async (options) => {
+const customRequest = (options) => {
   const fileUid = options.file?.uid
   if (fileUid) {
     uploadTaskStatus.value[fileUid] = 'queued'
@@ -1189,7 +1190,9 @@ const runUploadTask = (task) => {
         errorResp = {}
       }
       file.response = errorResp
-      const error = new Error(errorResp.detail || 'Upload failed')
+      const detail = errorResp.detail
+      const messageText = typeof detail === 'string' ? detail : detail?.message
+      const error = new Error(messageText || 'Upload failed')
       if (fileUid) {
         uploadTaskStatus.value[fileUid] = 'error'
       }
@@ -1221,12 +1224,12 @@ const runUploadTask = (task) => {
 const handleFileUpload = (info) => {
   if (info?.file?.status === 'error') {
     const file = info.file
-    // 尝试多种方式获取错误信息
-    const detail = file?.response?.detail || file?.error?.message || ''
-    if (detail.includes('same content') || detail.includes('相同内容')) {
+    const detail = file?.response?.detail
+    const detailMessage = typeof detail === 'string' ? detail : detail?.message
+    if (detail?.code === CONTENT_EXISTS_ERROR_CODE) {
       message.error(`${file.name} 已是相同内容文件，无需重复上传`)
     } else {
-      message.error(detail || `文件上传失败：${file.name}`)
+      message.error(detailMessage || file?.error?.message || `文件上传失败：${file.name}`)
     }
   }
 
@@ -1340,12 +1343,15 @@ const chunkData = async () => {
       params._preprocessed_map = preprocessedMap
 
       // 调用 addFiles (file mode)
-      await store.addFiles({
+      const added = await store.addFiles({
         items: items,
         contentType: 'file', // 重要：这里改为 file，因为我们已经转成了 minio 上的文件
         params,
         parentId: selectedFolderId.value
       })
+      if (!added) {
+        return
+      }
 
       emit('success')
       handleCancel()
@@ -1401,12 +1407,15 @@ const chunkData = async () => {
       Object.assign(params, buildAutoIndexParams())
     }
 
-    await store.addFiles({
+    const added = await store.addFiles({
       items,
       contentType: 'file',
       params,
       parentId: selectedFolderId.value
     })
+    if (!added) {
+      return
+    }
 
     emit('success')
     handleCancel()
