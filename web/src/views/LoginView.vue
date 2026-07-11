@@ -842,9 +842,9 @@ onUnmounted(() => {
 }
 
 .login-card {
-  width: 900px;
+  width: 860px;
   max-width: 95vw;
-  height: 560px;
+  height: 520px;
   background: var(--gray-0);
   border-radius: 16px;
   box-shadow: 0 0px 40px var(--shadow-1);
@@ -858,14 +858,15 @@ onUnmounted(() => {
 
 /* Image Side */
 .card-side.is-image {
-  flex: 1.4;
+  flex: 0.9;
   background-color: var(--main-10);
   overflow: hidden;
+  padding: 28px;
 
   .login-bg-image {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
   }
 }
