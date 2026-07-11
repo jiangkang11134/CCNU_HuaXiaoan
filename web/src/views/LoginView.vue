@@ -31,12 +31,6 @@
     <!-- 主要内容区：居中卡片 -->
     <main class="login-main">
       <div class="login-card">
-        <!-- 左侧图片 -->
-        <div class="card-side is-image">
-          <img :src="loginBgImage" alt="登录背景" class="login-bg-image" />
-        </div>
-
-        <!-- 右侧表单 -->
         <div class="card-side is-form">
           <div class="form-wrapper">
             <header class="form-header">
@@ -337,9 +331,6 @@ const isFrontPortal = computed(() => portalMode.value === 'front')
 const pageTitle = computed(() => (isFrontPortal.value ? '前台问答登录' : '后台管理登录'))
 
 // 品牌展示数据
-const loginBgImage = computed(() => {
-  return infoStore.organization?.login_bg || '/lab-safety-login-bg.svg'
-})
 const brandLogo = computed(() => {
   return infoStore.organization?.logo || ''
 })
@@ -772,7 +763,7 @@ onUnmounted(() => {
     margin: 0 auto;
     padding: 0 40px;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     .brand-container {
       display: flex;
@@ -838,68 +829,54 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 20px;
-  padding-top: 80px; /* Add space for navbar */
+  padding-top: 112px;
 }
 
 .login-card {
-  width: 860px;
-  max-width: 95vw;
-  height: 520px;
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  height: auto;
   background: var(--gray-0);
   border-radius: 16px;
   box-shadow: 0 0px 40px var(--shadow-1);
   display: flex;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .card-side {
   position: relative;
 }
 
-/* Image Side */
-.card-side.is-image {
-  flex: 0.9;
-  background-color: var(--main-10);
-  overflow: hidden;
-  padding: 28px;
-
-  .login-bg-image {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    object-position: center;
-  }
-}
-
 /* Form Side */
 .card-side.is-form {
   flex: 1;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 44px 56px;
 }
 
 .form-wrapper {
   width: 100%;
-  max-width: 320px;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
 }
 
 .form-header {
-  text-align: left;
+  text-align: center;
+
   .welcome-text {
-    font-size: 14px;
+    font-size: 24px;
     font-weight: 600;
-    color: var(--gray-500);
-    margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    color: var(--gray-700);
+    margin: 0;
+    line-height: 1.35;
   }
   .init-title {
-    font-size: 18px;
+    font-size: 24px;
     font-weight: 600;
     color: var(--main-color);
     margin: 0;
@@ -908,6 +885,10 @@ onUnmounted(() => {
 }
 
 .login-form {
+  :deep(.ant-form-item) {
+    margin-bottom: 16px;
+  }
+
   .portal-tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -950,6 +931,10 @@ onUnmounted(() => {
     margin-right: 8px;
     color: var(--gray-500);
   }
+}
+
+.login-form:not(.login-form--init) :deep(.ant-form-item:last-child) {
+  margin-bottom: 0;
 }
 
 .login-form.login-form--init :deep(.ant-form-item) {
@@ -1146,12 +1131,13 @@ onUnmounted(() => {
     margin-top: 20px;
   }
 
-  .card-side.is-image {
-    display: none;
+  .card-side.is-form {
+    padding: 36px 20px;
   }
 
-  .card-side.is-form {
-    padding: 40px 20px;
+  .form-header .welcome-text,
+  .form-header .init-title {
+    font-size: 22px;
   }
 }
 </style>
