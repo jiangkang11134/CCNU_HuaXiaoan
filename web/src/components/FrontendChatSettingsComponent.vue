@@ -31,18 +31,6 @@
                 </a-upload>
               </div>
             </a-form-item>
-            <a-form-item label="登录页背景">
-              <a-input v-model:value="config.login_bg" placeholder="/lab-safety-login-bg.svg" />
-              <div class="asset-control">
-                <img v-if="config.login_bg" :src="config.login_bg" alt="登录页背景预览" class="asset-preview background" />
-                <a-upload :show-upload-list="false" accept="image/*" :custom-request="createAssetUploadRequest('login_bg')">
-                  <a-button :loading="uploadingAsset.login_bg">
-                    <template #icon><UploadOutlined /></template>
-                    上传背景
-                  </a-button>
-                </a-upload>
-              </div>
-            </a-form-item>
             <a-form-item label="浏览器标题">
               <a-input v-model:value="config.browser_title" placeholder="实验室安全教育智能对话平台" />
             </a-form-item>
@@ -144,7 +132,6 @@ const DEFAULT_CONFIG = {
   organization_name: '实验室安全教育智能对话平台',
   organization_avatar: '/avatar.jpg',
   organization_logo: '/favicon.svg',
-  login_bg: '/lab-safety-login-bg.svg',
   browser_title: '实验室安全教育智能对话平台',
   system_name: '实验室安全教育智能对话平台',
   welcome_title_mode: 'dynamic',
@@ -183,8 +170,7 @@ const hasLoaded = ref(false)
 const saving = ref(false)
 const uploadingAsset = reactive({
   organization_avatar: false,
-  organization_logo: false,
-  login_bg: false
+  organization_logo: false
 })
 const config = reactive({ ...DEFAULT_CONFIG })
 const infoStore = useInfoStore()
@@ -226,6 +212,7 @@ const saveConfig = async () => {
   try {
     const payload = { ...config }
     delete payload.agent_options
+    delete payload.login_bg
     const response = await frontendChatConfigApi.updateConfig(payload)
     applyConfig(response.data)
     await infoStore.loadInfoConfig(true)
@@ -318,12 +305,6 @@ defineExpose({
     &.logo {
       width: 40px;
       height: 40px;
-      border-radius: 6px;
-    }
-
-    &.background {
-      width: 112px;
-      height: 64px;
       border-radius: 6px;
     }
   }
