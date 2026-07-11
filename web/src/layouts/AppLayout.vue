@@ -87,7 +87,7 @@ const showConversationNavigation = computed(
   () => !userStore.isAdmin && route.path.startsWith('/front/agent')
 )
 const organizationName = computed(() => {
-  return infoStore.organization.name || infoStore.branding.name || 'Yuxi'
+  return infoStore.organization.name || infoStore.branding.name || '实验室安全教育智能对话平台'
 })
 
 // 下面是导航菜单部分，添加智能体项

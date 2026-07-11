@@ -13,7 +13,7 @@
         <a-card size="small" title="品牌展示" :bordered="true">
           <a-form layout="vertical">
             <a-form-item label="组织名称">
-              <a-input v-model:value="config.organization_name" placeholder="江南语析" />
+              <a-input v-model:value="config.organization_name" placeholder="实验室安全教育智能对话平台" />
             </a-form-item>
             <a-form-item label="侧边栏头像">
               <a-input v-model:value="config.organization_avatar" placeholder="/avatar.jpg" />
@@ -52,10 +52,10 @@
               </div>
             </a-form-item>
             <a-form-item label="浏览器标题">
-              <a-input v-model:value="config.browser_title" placeholder="语析 - Knowledge Management" />
+              <a-input v-model:value="config.browser_title" placeholder="实验室安全教育智能对话平台" />
             </a-form-item>
             <a-form-item label="系统名称">
-              <a-input v-model:value="config.system_name" placeholder="智能AI对话系统" />
+              <a-input v-model:value="config.system_name" placeholder="实验室安全教育智能对话平台" />
             </a-form-item>
           </a-form>
         </a-card>
@@ -139,15 +139,15 @@ import { frontendChatConfigApi } from '@/apis/system_api'
 import { useInfoStore } from '@/stores/info'
 
 const DEFAULT_CONFIG = {
-  organization_name: '江南语析',
+  organization_name: '实验室安全教育智能对话平台',
   organization_avatar: '/avatar.jpg',
   organization_logo: '/favicon.svg',
   login_bg: '/lab-safety-login-bg.svg',
-  browser_title: '语析 - Knowledge Management',
-  system_name: '智能AI对话系统',
+  browser_title: '实验室安全教育智能对话平台',
+  system_name: '实验室安全教育智能对话平台',
   welcome_title_mode: 'dynamic',
-  welcome_title: '智能AI对话系统',
-  frontend_input_placeholder: '基于知识库的 RAG 问答，快速准确地回答问题',
+  welcome_title: '实验室安全教育智能对话平台',
+  frontend_input_placeholder: '请输入实验室安全教育相关问题',
   default_agent_id: '',
   selectable_agent_ids: [],
   show_agent_selector: true,

@@ -19,15 +19,15 @@ from yuxi.storage.postgres.models_business import Agent, SystemKV, User
 FRONTEND_BUSINESS_ROLES = {"student", "faculty"}
 FRONTEND_CHAT_CONFIG_KEY = "frontend_chat_config"
 FRONTEND_CHAT_CONFIG_DEFAULT = {
-    "organization_name": "江南语析",
+    "organization_name": "实验室安全教育智能对话平台",
     "organization_avatar": "/avatar.jpg",
     "organization_logo": "/favicon.svg",
     "login_bg": "/lab-safety-login-bg.svg",
-    "browser_title": "语析 - Knowledge Management",
-    "system_name": "智能AI对话系统",
+    "browser_title": "实验室安全教育智能对话平台",
+    "system_name": "实验室安全教育智能对话平台",
     "welcome_title_mode": "dynamic",
-    "welcome_title": "智能AI对话系统",
-    "frontend_input_placeholder": "基于知识库的 RAG 问答，快速准确地回答问题",
+    "welcome_title": "实验室安全教育智能对话平台",
+    "frontend_input_placeholder": "请输入实验室安全教育相关问题",
     "default_agent_id": "",
     "selectable_agent_ids": [],
     "allow_user_select_agents": False,
@@ -43,6 +43,13 @@ FRONTEND_CHAT_CONFIG_DEFAULT = {
     "show_reference_documents": True,
 }
 DEPRECATED_LOGIN_BG_PATHS = {"/login-bg.jpg"}
+DEPRECATED_FRONTEND_CONFIG_VALUES = {
+    "organization_name": {"江南语析", "Yuxi", "语析"},
+    "browser_title": {"语析 - Knowledge Management", "Yuxi", "语析 Yuxi"},
+    "system_name": {"智能AI对话系统", "Yuxi", "语析"},
+    "welcome_title": {"智能AI对话系统", "Yuxi", "语析"},
+    "frontend_input_placeholder": {"基于知识库的 RAG 问答，快速准确地回答问题"},
+}
 
 BOOLEAN_CONFIG_KEYS = {
     "allow_user_select_agents",
@@ -153,6 +160,10 @@ def normalize_frontend_chat_config(config_value: dict, agent_options: list[dict]
 
     if config_data["login_bg"] in DEPRECATED_LOGIN_BG_PATHS:
         config_data["login_bg"] = FRONTEND_CHAT_CONFIG_DEFAULT["login_bg"]
+
+    for key, deprecated_values in DEPRECATED_FRONTEND_CONFIG_VALUES.items():
+        if config_data[key] in deprecated_values:
+            config_data[key] = FRONTEND_CHAT_CONFIG_DEFAULT[key]
 
     if config_data["welcome_title_mode"] not in {"dynamic", "custom"}:
         raise HTTPException(status_code=400, detail="输入框标题模式必须是 dynamic 或 custom")
