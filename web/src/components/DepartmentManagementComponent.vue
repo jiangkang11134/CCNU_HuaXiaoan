@@ -1,29 +1,5 @@
 <template>
   <div class="department-management">
-    <!-- 头部区域 -->
-    <div class="header-section">
-      <div class="header-content">
-        <div class="section-title">部门管理</div>
-        <p class="section-description">管理系统部门，部门下的用户会被隔离管理。</p>
-      </div>
-      <div class="header-actions">
-        <a-button
-          @click="handleRefresh"
-          :loading="departmentManagement.refreshing"
-          title="刷新"
-          class="refresh-btn lucide-icon-btn"
-        >
-          <template #icon
-            ><RefreshCw :size="16" :class="{ spin: departmentManagement.refreshing }"
-          /></template>
-        </a-button>
-        <a-button type="primary" @click="showAddDepartmentModal" class="add-btn lucide-icon-btn">
-          <template #icon><Plus :size="16" /></template>
-          添加部门
-        </a-button>
-      </div>
-    </div>
-
     <!-- 主内容区域 -->
     <div class="content-section">
       <a-spin :spinning="departmentManagement.loading">
@@ -306,62 +282,16 @@ const confirmDeleteDepartment = (department) => {
 onMounted(() => {
   fetchDepartments()
 })
+
+defineExpose({
+  departmentManagement,
+  handleRefresh,
+  showAddDepartmentModal
+})
 </script>
 
 <style lang="less" scoped>
 .department-management {
-  .header-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin-bottom: 16px;
-
-    .header-content {
-      flex: 1;
-      min-width: 0;
-
-      .section-title {
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--gray-900);
-        line-height: 1.4;
-        margin: 12px 0 12px;
-      }
-
-      .section-description {
-        font-size: 14px;
-        color: var(--gray-600);
-        line-height: 1.4;
-        margin: 0;
-      }
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .refresh-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        transition: all 0.2s ease;
-
-        &:hover {
-          background: var(--gray-25);
-        }
-
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-      }
-    }
-  }
-
   .content-section {
     overflow: hidden;
 

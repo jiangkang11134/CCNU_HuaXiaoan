@@ -17,7 +17,7 @@ export function getPortalLoginPath(mode = getPortalMode()) {
 }
 
 export function getLandingPathForRole(role) {
-  return role === 'system_admin' ? '/back/extensions' : '/front/agent'
+  return role === 'system_admin' ? '/back/dashboard' : '/front/agent'
 }
 
 export function isAdminRole(role) {

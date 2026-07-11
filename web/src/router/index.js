@@ -18,7 +18,7 @@ const router = createRouter({
     },
     {
       path: '/back',
-      redirect: '/back/extensions'
+      redirect: '/back/dashboard'
     },
     {
       path: '/front/login',
@@ -297,7 +297,7 @@ router.beforeEach(async (to) => {
   }
 
   if (isLoggedIn && targetPortal === 'front' && isAdminRole(userStore.userRole)) {
-    return '/back/extensions'
+    return '/back/dashboard'
   }
 
   if (isLoggedIn && targetPortal === 'back' && !isAdminRole(userStore.userRole)) {

@@ -1,13 +1,5 @@
 <template>
   <div class="frontend-chat-settings">
-    <div class="header-section">
-      <div class="header-content">
-        <div class="section-title">前端配置</div>
-        <p class="section-description">配置前端品牌展示、前台问答门户的可用智能体和输入区能力。</p>
-      </div>
-      <a-button type="primary" :loading="saving" @click="saveConfig">保存配置</a-button>
-    </div>
-
     <a-spin :spinning="loading">
       <div class="settings-form-grid">
         <a-card v-if="activeSection === 'branding'" size="small" title="品牌展示" :bordered="true">
@@ -267,6 +259,11 @@ watch(
 )
 
 onMounted(loadConfig)
+
+defineExpose({
+  saveConfig,
+  saving
+})
 </script>
 
 <style lang="less" scoped>

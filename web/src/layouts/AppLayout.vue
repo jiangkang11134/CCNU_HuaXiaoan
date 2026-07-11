@@ -116,6 +116,13 @@ const mainList = computed(() => {
   }
 
   items.push({
+    name: '数据总览',
+    path: '/back/dashboard',
+    icon: BarChart3,
+    activeIcon: BarChart3
+  })
+
+  items.push({
     name: '智能体扩展',
     path: '/back/extensions',
     activePaths: ['/back/extensions'],
@@ -133,13 +140,6 @@ const mainList = computed(() => {
   items.push({
     name: '对话数据',
     path: '/back/conversations',
-    icon: BarChart3,
-    activeIcon: BarChart3
-  })
-
-  items.push({
-    name: '数据总览',
-    path: '/back/dashboard',
     icon: BarChart3,
     activeIcon: BarChart3
   })

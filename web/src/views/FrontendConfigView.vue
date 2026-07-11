@@ -6,9 +6,19 @@
       :tabs="frontendConfigTabs"
       :show-border="true"
       aria-label="前端配置切换"
-    />
+    >
+      <template #actions>
+        <a-button
+          type="primary"
+          :loading="frontendConfigRef?.saving"
+          @click="frontendConfigRef?.saveConfig()"
+        >
+          保存配置
+        </a-button>
+      </template>
+    </PageHeader>
     <div class="settings-page-content">
-      <FrontendChatSettingsComponent :active-section="activeTab" />
+      <FrontendChatSettingsComponent ref="frontendConfigRef" :active-section="activeTab" />
     </div>
   </div>
 </template>
@@ -19,6 +29,7 @@ import PageHeader from '@/components/shared/PageHeader.vue'
 import FrontendChatSettingsComponent from '@/components/FrontendChatSettingsComponent.vue'
 
 const activeTab = ref('branding')
+const frontendConfigRef = ref(null)
 const frontendConfigTabs = [
   { key: 'branding', label: '品牌展示' },
   { key: 'portal', label: '前台展示' },

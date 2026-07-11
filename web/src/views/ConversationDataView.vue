@@ -1,12 +1,6 @@
 <template>
   <div class="conversation-data-view">
     <PageHeader title="对话数据" :loading="loading" :show-border="true">
-      <template #info>
-        <div class="summary-strip">
-          <span>{{ conversations.length }} 条当前结果</span>
-          <span>仅用于运营查看</span>
-        </div>
-      </template>
       <template #actions>
         <a-button class="lucide-icon-btn" @click="openFeedbacks">
           <MessageSquareWarning :size="14" />
@@ -197,21 +191,6 @@ onMounted(loadConversations)
 .conversation-data-view {
   min-height: 100%;
   background: var(--gray-0);
-}
-
-.summary-strip {
-  display: flex;
-  gap: 8px;
-
-  span {
-    padding: 6px 10px;
-    border: 1px solid var(--gray-100);
-    border-radius: 7px;
-    background: var(--gray-10);
-    color: var(--gray-700);
-    font-size: 12px;
-    line-height: 18px;
-  }
 }
 
 .filter-input,

@@ -1,31 +1,5 @@
 <template>
   <div class="user-management">
-    <!-- 头部区域 -->
-    <div class="header-section">
-      <div class="header-content">
-        <div class="section-title">用户管理</div>
-        <p class="section-description">
-          管理系统用户，请谨慎操作。删除用户后该用户将无法登录系统。
-        </p>
-      </div>
-      <div class="header-actions">
-        <a-button
-          @click="handleRefresh"
-          :loading="userManagement.refreshing"
-          title="刷新"
-          class="refresh-btn lucide-icon-btn"
-        >
-          <template #icon>
-            <RefreshCw :size="16" :class="{ spin: userManagement.refreshing }" />
-          </template>
-        </a-button>
-        <a-button type="primary" @click="showAddUserModal" class="add-btn lucide-icon-btn">
-          <template #icon><Plus :size="16" /></template>
-          添加用户
-        </a-button>
-      </div>
-    </div>
-
     <div class="filter-section">
       <a-input
         v-model:value="userManagement.searchKeyword"
@@ -788,66 +762,16 @@ onMounted(async () => {
   await fetchUsers()
   await fetchDepartments()
 })
+
+defineExpose({
+  handleRefresh,
+  showAddUserModal,
+  userManagement
+})
 </script>
 
 <style lang="less" scoped>
 .user-management {
-  .header-section {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 16px;
-    margin-bottom: 16px;
-
-    .header-content {
-      flex: 1;
-      min-width: 0;
-
-      .section-title {
-        font-size: 16px;
-        font-weight: 500;
-        color: var(--gray-900);
-        line-height: 1.4;
-        margin: 12px 0 12px;
-      }
-
-      .section-description {
-        font-size: 14px;
-        color: var(--gray-600);
-        line-height: 1.4;
-        margin: 0;
-      }
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      .refresh-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        transition: all 0.2s ease;
-
-        &:hover {
-          background: var(--gray-25);
-        }
-
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-
-        :deep(.ant-btn-loading-icon) {
-          color: var(--gray-600);
-        }
-      }
-    }
-  }
-
   .filter-section {
     display: grid;
     grid-template-columns: minmax(260px, 1fr) auto;

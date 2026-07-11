@@ -427,7 +427,7 @@ const adminForm = reactive({
 })
 
 const goHome = () => {
-  router.push(isFrontPortal.value ? '/front/agent' : '/back/extensions')
+  router.push(isFrontPortal.value ? '/front/agent' : '/back/dashboard')
 }
 
 // 清理倒计时器
@@ -660,7 +660,7 @@ const handleInitialize = async () => {
     })
 
     message.success('系统管理员账户创建成功')
-    router.push('/back/extensions')
+    router.push('/back/dashboard')
   } catch (error) {
     console.error('初始化失败:', error)
     errorMessage.value = error.message || '初始化失败，请重试'
