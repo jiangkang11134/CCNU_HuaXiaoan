@@ -1,6 +1,6 @@
 <template>
   <div class="debug-view">
-    <PageHeader title="调试面板" :show-border="true">
+    <PageHeader title="运行日志" :show-border="true">
       <template #info>
         <div class="summary-strip">
           <span>非生产环境</span>

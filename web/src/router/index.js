@@ -137,21 +137,60 @@ const router = createRouter({
       children: [
         {
           path: '',
-          name: 'DebugComp',
+          name: 'RuntimeLogsComp',
           component: () => import('../views/DebugView.vue'),
           meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         }
       ]
     },
     {
-      path: '/back/settings',
-      name: 'settings',
+      path: '/back/basic-settings',
+      name: 'basic-settings',
       component: AppLayout,
       children: [
         {
           path: '',
-          name: 'SystemSettingsComp',
-          component: () => import('../views/SystemSettingsView.vue'),
+          name: 'BasicSettingsComp',
+          component: () => import('../views/BasicSettingsView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
+      path: '/back/frontend-config',
+      name: 'frontend-config',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'FrontendConfigComp',
+          component: () => import('../views/FrontendConfigView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
+      path: '/back/users',
+      name: 'user-management',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'UserManagementComp',
+          component: () => import('../views/UserManagementView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
+      path: '/back/departments',
+      name: 'department-management',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'DepartmentManagementComp',
+          component: () => import('../views/DepartmentManagementView.vue'),
           meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
         }
       ]

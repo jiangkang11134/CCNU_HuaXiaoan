@@ -50,11 +50,12 @@
       </template>
     </a-dropdown>
     <a-button v-else-if="showButton" type="primary" @click="goToLogin"> 登录 </a-button>
+    <PersonalSettingsModal v-model:open="personalSettingsOpen" />
   </div>
 </template>
 
 <script setup>
-import { computed, useSlots } from 'vue'
+import { computed, ref, useSlots } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { message } from 'ant-design-vue'
@@ -62,12 +63,14 @@ import { Sun, Moon, LogOut } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/theme'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
+import PersonalSettingsModal from '@/components/PersonalSettingsModal.vue'
 import { getPortalLoginPath } from '@/utils/portal'
 
 const router = useRouter()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 const slots = useSlots()
+const personalSettingsOpen = ref(false)
 
 const avatarDefaultSrc = computed(() => (userStore.uid ? generatePixelAvatar(userStore.uid) : ''))
 
@@ -111,7 +114,7 @@ const toggleTheme = () => {
 }
 
 const openProfile = () => {
-  router.push(userStore.isAdmin ? '/back/settings?tab=account' : '/front/agent')
+  personalSettingsOpen.value = true
 }
 </script>
 

@@ -5,6 +5,7 @@ import {
   BarChart3,
   ClipboardList,
   LibraryBig,
+  Building2,
   Box,
   Bug,
   PanelLeftClose,
@@ -12,7 +13,9 @@ import {
   MessageCirclePlus,
   Search,
   Settings,
-  ShieldCheck
+  ShieldCheck,
+  SlidersHorizontal,
+  Users
 } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
@@ -142,17 +145,38 @@ const mainList = computed(() => {
   })
 
   items.push({
-    name: '调试面板',
+    name: '运行日志',
     path: '/back/debug',
     icon: Bug,
     activeIcon: Bug
   })
 
   items.push({
-    name: '系统设置',
-    path: '/back/settings',
+    name: '基本设置',
+    path: '/back/basic-settings',
     icon: Settings,
     activeIcon: Settings
+  })
+
+  items.push({
+    name: '前端配置',
+    path: '/back/frontend-config',
+    icon: SlidersHorizontal,
+    activeIcon: SlidersHorizontal
+  })
+
+  items.push({
+    name: '用户管理',
+    path: '/back/users',
+    icon: Users,
+    activeIcon: Users
+  })
+
+  items.push({
+    name: '部门管理',
+    path: '/back/departments',
+    icon: Building2,
+    activeIcon: Building2
   })
 
   return items
