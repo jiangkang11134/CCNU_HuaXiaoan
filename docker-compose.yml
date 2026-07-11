@@ -14,7 +14,7 @@ x-api-worker-env: &api-worker-env
   MILVUS_TOKEN: ${MILVUS_TOKEN:-}
   MINIO_URI: ${MINIO_URI:-http://minio:9000}
   # 文档解析
-  MINERU_API_URI: ${MINERU_API_URI:-http://mineru-api:30001}
+  MINERU_API_URI: ${MINERU_API_URI:-https://mineru.net/api/v4}
   PADDLEX_URI: ${PADDLEX_URI:-http://paddlex:8080}
   # Sandbox related
   YUXI_DOCKER_API_BASE: ${YUXI_DOCKER_API_BASE:-http://localhost}
@@ -323,46 +323,6 @@ services:
       retries: 10
     volumes:
       - ./docker/volumes/redis:/data
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  # lastest version: wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
-  mineru-api:
-    build:
-      context: .
-      dockerfile: docker/mineru.Dockerfile
-    image: mineru-vllm:latest
-    container_name: mineru-api
-    profiles:
-      - all
-    env_file:
-      - .env
-    ports:
-      - 30001:30001
-    environment:
-      MINERU_MODEL_SOURCE: local
-      VLLM_USE_V1: "1"
-    entrypoint: mineru-api
-    command:
-      --host 0.0.0.0
-      --port 30001
-      # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
-      # parameters for vllm-engine
-      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:30001/health || exit 1"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]  # Modify for multiple GPUs: ["0", "1"]
-              capabilities: [gpu]
     networks:
       - app-network
     restart: unless-stopped

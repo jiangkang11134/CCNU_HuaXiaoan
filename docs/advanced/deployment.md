@@ -21,14 +21,21 @@
 为避免与开发环境冲突，生产环境建议使用 `.env.prod` 文件：
 
 ```bash
-cp .env.template .env.prod
+./scripts/init_prod_env.sh
 ```
 
-编辑 `.env.prod`，设置强密码和必要的 API 密钥：
+编辑 `.env.prod`，设置生产环境启动前必须存在的部署级配置：
 
+- `JWT_SECRET_KEY` / `YUXI_INSTANCE_ID`：由初始化脚本生成持久化随机值，不要每次部署变化
+- `YUXI_DATA_DIR`：生产数据目录，建议放在代码目录外，例如 `/root/yuxi-data`
+- `POSTGRES_PASSWORD` / `POSTGRES_URL`：修改默认数据库密码，并保持连接串一致
 - `NEO4J_PASSWORD`：修改默认密码
 - `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`：修改默认密钥
-- `SILICONFLOW_API_KEY` 等模型密钥
+- `YUXI_CORS_ORIGINS`：仅跨域部署时设置
+
+模型供应商 Key、OCR Key、Tavily 搜索 Key、URL 解析白名单、默认模型与默认 OCR 引擎不再建议写入 `.env.prod`。服务启动后，使用系统管理员登录后台，在「基本设置」和「模型供应商」中维护这些运行时业务配置。
+
+`docker-compose.prod.yml` 默认把数据库、MinIO、Milvus、Neo4j、Redis、系统上传资源等数据挂载到 `${YUXI_DATA_DIR}`。更新或重新拉取代码时不要删除该目录，否则会丢失知识库文件、索引、用户数据和后台上传的品牌图片。
 
 ### 2. 启动服务
 
@@ -36,10 +43,10 @@ cp .env.template .env.prod
 
 ```bash
 # 仅启动核心服务（CPU 模式）
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 
 # 启动所有服务（包含 GPU OCR）
-docker compose -f docker-compose.prod.yml --profile all up -d --build
+docker compose -f docker-compose.prod.yml --env-file .env.prod --profile all up -d --build
 ```
 
 ### 3. 验证部署
@@ -69,7 +76,7 @@ docker compose -f docker-compose.prod.yml --profile all up -d --build
 git pull
 
 # 重新构建并启动
-docker compose -f docker-compose.prod.yml up -d --build
+./scripts/deploy_prod.sh
 ```
 
 ### 查看日志

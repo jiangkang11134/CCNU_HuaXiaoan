@@ -82,7 +82,7 @@
                     @change="setSecretDraft('tavily_api_key', $event.target.value)"
                     @pressEnter="saveSecret('tavily_api_key')"
                   />
-                  <a-button @click="saveSecret('tavily_api_key')">保存</a-button>
+                  <a-button :loading="secretSaving.tavily_api_key" @click="saveSecret('tavily_api_key')">保存</a-button>
                 </a-input-group>
               </div>
             </div>
@@ -109,16 +109,18 @@
                     @change="setSecretDraft('mineru_api_key', $event.target.value)"
                     @pressEnter="saveSecret('mineru_api_key')"
                   />
-                  <a-button @click="saveSecret('mineru_api_key')">保存</a-button>
+                  <a-button :loading="secretSaving.mineru_api_key" @click="saveSecret('mineru_api_key')">保存</a-button>
                 </a-input-group>
               </div>
             </div>
             <div class="col-item">
-              <div class="setting-label">MinerU 本地服务地址</div>
+              <div class="setting-label">MinerU 官方 API 地址</div>
               <div class="setting-content">
                 <a-input
                   :value="configStore.config?.mineru_api_uri"
+                  placeholder="https://mineru.net/api/v4"
                   @change="handleTextChange('mineru_api_uri', $event.target.value)"
+                  @pressEnter="handleTextChange('mineru_api_uri', $event.target.value)"
                 />
               </div>
             </div>
@@ -145,7 +147,7 @@
                     @change="setSecretDraft('paddleocr_api_token', $event.target.value)"
                     @pressEnter="saveSecret('paddleocr_api_token')"
                   />
-                  <a-button @click="saveSecret('paddleocr_api_token')">保存</a-button>
+                  <a-button :loading="secretSaving.paddleocr_api_token" @click="saveSecret('paddleocr_api_token')">保存</a-button>
                 </a-input-group>
               </div>
             </div>
@@ -170,7 +172,7 @@
                     @change="setSecretDraft('deepseek_ocr_api_key', $event.target.value)"
                     @pressEnter="saveSecret('deepseek_ocr_api_key')"
                   />
-                  <a-button @click="saveSecret('deepseek_ocr_api_key')">保存</a-button>
+                  <a-button :loading="secretSaving.deepseek_ocr_api_key" @click="saveSecret('deepseek_ocr_api_key')">保存</a-button>
                 </a-input-group>
               </div>
             </div>
@@ -217,6 +219,7 @@
 
 <script setup>
 import { computed, reactive } from 'vue'
+import { message } from 'ant-design-vue'
 import { useConfigStore } from '@/stores/config'
 import { useUserStore } from '@/stores/user'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
@@ -232,24 +235,29 @@ const secretDrafts = reactive({
   paddleocr_api_token: '',
   deepseek_ocr_api_key: ''
 })
+const secretSaving = reactive({
+  tavily_api_key: false,
+  mineru_api_key: false,
+  paddleocr_api_token: false,
+  deepseek_ocr_api_key: false
+})
 const urlWhitelistText = computed(() => (configStore.config?.url_whitelist || []).join('\n'))
 const ocrEngineOptions = [
   { value: 'disable', label: '不启用' },
   { value: 'rapid_ocr', label: 'RapidOCR (ONNX)' },
-  { value: 'mineru_ocr', label: 'MinerU OCR' },
-  { value: 'mineru_official', label: 'MinerU Official API' },
+  { value: 'mineru_official', label: 'MinerU 官方 API' },
   { value: 'pp_structure_v3_ocr', label: 'PP-Structure-V3' },
   { value: 'deepseek_ocr', label: 'DeepSeek OCR' },
   { value: 'paddleocr_vl_1_6', label: 'PaddleOCR-VL-1.6' },
   { value: 'paddleocr_pp_ocrv6', label: 'PP-OCRv6' }
 ]
 
-const handleChange = (key, e) => {
-  configStore.setConfigValue(key, e)
+const handleChange = async (key, e) => {
+  await configStore.setConfigValue(key, e)
 }
 
-const handleTextChange = (key, value) => {
-  configStore.setConfigValue(key, value)
+const handleTextChange = async (key, value) => {
+  await configStore.setConfigValue(key, value)
 }
 
 const handleUrlWhitelistChange = (event) => {
@@ -265,11 +273,21 @@ const setSecretDraft = (key, value) => {
   secretDrafts[key] = value
 }
 
-const saveSecret = (key) => {
+const saveSecret = async (key) => {
   const value = secretDrafts[key].trim()
-  if (!value) return
-  configStore.setConfigValue(key, value)
-  secretDrafts[key] = ''
+  if (!value) {
+    message.warning('请输入要保存的配置值')
+    return
+  }
+  secretSaving[key] = true
+  try {
+    await configStore.setConfigValue(key, value)
+    message.success('配置已保存')
+  } catch (error) {
+    message.error(error.message || '配置保存失败')
+  } finally {
+    secretSaving[key] = false
+  }
 }
 
 const secretPlaceholder = (key) =>

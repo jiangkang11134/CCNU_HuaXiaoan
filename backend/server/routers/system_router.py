@@ -1,12 +1,15 @@
 import os
+import uuid
 from pathlib import Path
 
 import aiofiles
 import yaml
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import config, get_version
 from yuxi.storage.postgres.models_business import SystemKV, User
+from yuxi.utils.upload_utils import write_upload_to_path
 from yuxi.utils.logging_config import logger
 
 from server.utils.auth_middleware import get_admin_user, get_db, get_required_user
@@ -32,6 +35,18 @@ SENSITIVE_CONFIG_FIELDS = frozenset(
         "deepseek_ocr_api_key",
     }
 )
+FRONTEND_ASSET_DIR_NAME = "frontend-assets"
+FRONTEND_ASSET_MAX_SIZE_BYTES = 5 * 1024 * 1024
+FRONTEND_ASSET_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg"})
+FRONTEND_ASSET_CONTENT_TYPES = frozenset(
+    {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/svg+xml",
+    }
+)
 
 
 def _dump_public_config() -> dict:
@@ -49,6 +64,28 @@ def _remove_empty_sensitive_config_values(items: dict) -> dict:
         if key in sanitized and not str(sanitized.get(key) or "").strip():
             sanitized.pop(key)
     return sanitized
+
+
+def _frontend_asset_root() -> Path:
+    return (Path(config.save_dir) / FRONTEND_ASSET_DIR_NAME).resolve()
+
+
+def _validate_frontend_asset_upload(file: UploadFile) -> str:
+    filename = Path(file.filename or "").name
+    suffix = Path(filename).suffix.lower()
+    if suffix not in FRONTEND_ASSET_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="仅支持 jpg、png、webp、gif、svg 图片")
+    if file.content_type not in FRONTEND_ASSET_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="上传文件必须是图片类型")
+    return suffix
+
+
+def _resolve_frontend_asset_path(filename: str) -> Path:
+    asset_root = _frontend_asset_root()
+    path = (asset_root / Path(filename).name).resolve()
+    if path.parent != asset_root:
+        raise HTTPException(status_code=400, detail="非法资源路径")
+    return path
 
 # =============================================================================
 # === 健康检查分组 ===
@@ -154,6 +191,42 @@ async def update_frontend_chat_config(
     await db.commit()
     await db.refresh(kv)
     return {"success": True, "data": normalize_frontend_chat_config(kv.value, agent_options)}
+
+
+@system.post("/frontend-assets")
+async def upload_frontend_asset(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_admin_user),
+):
+    """上传前端品牌图片到持久化资源目录。"""
+    suffix = _validate_frontend_asset_upload(file)
+    asset_root = _frontend_asset_root()
+    asset_root.mkdir(parents=True, exist_ok=True)
+
+    storage_name = f"{uuid.uuid4().hex}{suffix}"
+    target_path = _resolve_frontend_asset_path(storage_name)
+    try:
+        await write_upload_to_path(
+            file,
+            target_path,
+            max_size_bytes=FRONTEND_ASSET_MAX_SIZE_BYTES,
+            too_large_message="图片大小不能超过 5MB",
+        )
+    except ValueError as exc:
+        if target_path.exists():
+            target_path.unlink()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"success": True, "data": {"url": f"/api/system/frontend-assets/{storage_name}"}}
+
+
+@system.get("/frontend-assets/{filename}")
+async def get_frontend_asset(filename: str):
+    """读取后台上传的前端品牌图片。"""
+    asset_path = _resolve_frontend_asset_path(filename)
+    if not asset_path.exists() or not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="资源不存在")
+    return FileResponse(asset_path)
 
 
 @system.get("/global-agent-prompt")

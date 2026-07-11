@@ -15,6 +15,7 @@ from yuxi.utils.logging_config import logger
 
 READONLY_CONFIG_FIELDS = frozenset({"save_dir"})
 DEFAULT_OCR_ENGINE = "rapid_ocr"
+DEFAULT_MINERU_API_BASE_URL = "https://mineru.net/api/v4"
 DEFAULT_PADDLEOCR_API_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 
 
@@ -92,8 +93,8 @@ class Config(BaseModel):
         description="MinerU 官方 API Key",
     )
     mineru_api_uri: str = Field(
-        default_factory=lambda: _env_str("MINERU_API_URI", "http://mineru-api:30001"),
-        description="MinerU 本地服务地址",
+        default_factory=lambda: _env_str("MINERU_API_URI", DEFAULT_MINERU_API_BASE_URL),
+        description="MinerU 官方 API 地址",
     )
     mineru_timeout_seconds: int = Field(
         default_factory=lambda: _env_int("MINERU_TIMEOUT", 1800),

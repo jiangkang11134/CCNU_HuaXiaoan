@@ -14,6 +14,7 @@ from typing import Any
 import requests
 
 from yuxi import config
+from yuxi.config.app import DEFAULT_MINERU_API_BASE_URL
 from yuxi.knowledge.parser.base import BaseDocumentProcessor, DocumentParserException
 from yuxi.knowledge.parser.zip_utils import process_zip_file_sync
 from yuxi.utils import hashstr, logger
@@ -27,7 +28,7 @@ class MinerUOfficialParser(BaseDocumentProcessor):
         if not self.api_key:
             raise DocumentParserException("MinerU 官方 API Key 未配置", "mineru_official", "missing_api_key")
 
-        self.api_base = "https://mineru.net/api/v4"
+        self.api_base = (config.mineru_api_uri or os.getenv("MINERU_API_URI") or DEFAULT_MINERU_API_BASE_URL).rstrip("/")
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",

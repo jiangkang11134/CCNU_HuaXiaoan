@@ -17,12 +17,39 @@
             </a-form-item>
             <a-form-item label="侧边栏头像">
               <a-input v-model:value="config.organization_avatar" placeholder="/avatar.jpg" />
+              <div class="asset-control">
+                <img v-if="config.organization_avatar" :src="config.organization_avatar" alt="侧边栏头像预览" class="asset-preview avatar" />
+                <a-upload :show-upload-list="false" accept="image/*" :custom-request="createAssetUploadRequest('organization_avatar')">
+                  <a-button :loading="uploadingAsset.organization_avatar">
+                    <template #icon><UploadOutlined /></template>
+                    上传头像
+                  </a-button>
+                </a-upload>
+              </div>
             </a-form-item>
             <a-form-item label="登录页 Logo">
               <a-input v-model:value="config.organization_logo" placeholder="/favicon.svg" />
+              <div class="asset-control">
+                <img v-if="config.organization_logo" :src="config.organization_logo" alt="登录页 Logo 预览" class="asset-preview logo" />
+                <a-upload :show-upload-list="false" accept="image/*" :custom-request="createAssetUploadRequest('organization_logo')">
+                  <a-button :loading="uploadingAsset.organization_logo">
+                    <template #icon><UploadOutlined /></template>
+                    上传 Logo
+                  </a-button>
+                </a-upload>
+              </div>
             </a-form-item>
             <a-form-item label="登录页背景">
               <a-input v-model:value="config.login_bg" placeholder="/lab-safety-login-bg.svg" />
+              <div class="asset-control">
+                <img v-if="config.login_bg" :src="config.login_bg" alt="登录页背景预览" class="asset-preview background" />
+                <a-upload :show-upload-list="false" accept="image/*" :custom-request="createAssetUploadRequest('login_bg')">
+                  <a-button :loading="uploadingAsset.login_bg">
+                    <template #icon><UploadOutlined /></template>
+                    上传背景
+                  </a-button>
+                </a-upload>
+              </div>
             </a-form-item>
             <a-form-item label="浏览器标题">
               <a-input v-model:value="config.browser_title" placeholder="语析 - Knowledge Management" />
@@ -107,6 +134,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { UploadOutlined } from '@ant-design/icons-vue'
 import { frontendChatConfigApi } from '@/apis/system_api'
 import { useInfoStore } from '@/stores/info'
 
@@ -147,6 +175,11 @@ const inputSwitches = [
 
 const loading = ref(false)
 const saving = ref(false)
+const uploadingAsset = reactive({
+  organization_avatar: false,
+  organization_logo: false,
+  login_bg: false
+})
 const config = reactive({ ...DEFAULT_CONFIG })
 const infoStore = useInfoStore()
 
@@ -197,6 +230,25 @@ const saveConfig = async () => {
   }
 }
 
+const createAssetUploadRequest = (key) => async ({ file, onSuccess, onError }) => {
+  uploadingAsset[key] = true
+  try {
+    const response = await frontendChatConfigApi.uploadAsset(file)
+    const url = response?.data?.url
+    if (!url) {
+      throw new Error('上传接口未返回资源地址')
+    }
+    config[key] = url
+    message.success('图片已上传，请保存配置使其生效')
+    onSuccess?.(response)
+  } catch (error) {
+    message.error(error.message || '图片上传失败')
+    onError?.(error)
+  } finally {
+    uploadingAsset[key] = false
+  }
+}
+
 watch(
   () => config.selectable_agent_ids,
   (ids) => {
@@ -224,6 +276,33 @@ onMounted(loadConfig)
 
   .field-gap {
     margin-top: 10px;
+  }
+
+  .asset-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+  }
+
+  .asset-preview {
+    flex: 0 0 auto;
+    object-fit: cover;
+    border: 1px solid var(--gray-200);
+    background: var(--gray-50);
+
+    &.avatar,
+    &.logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+    }
+
+    &.background {
+      width: 112px;
+      height: 64px;
+      border-radius: 6px;
+    }
   }
 
   .switch-grid {

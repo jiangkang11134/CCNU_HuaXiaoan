@@ -58,7 +58,12 @@ export const configApi = {
 
 export const frontendChatConfigApi = {
   getConfig: async () => apiGet('/api/system/frontend-chat-config'),
-  updateConfig: async (payload) => apiAdminPut('/api/system/frontend-chat-config', payload)
+  updateConfig: async (payload) => apiAdminPut('/api/system/frontend-chat-config', payload),
+  uploadAsset: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return apiAdminPost('/api/system/frontend-assets', formData)
+  }
 }
 
 export const globalAgentPromptApi = {

@@ -8,12 +8,12 @@ export const useConfigStore = defineStore('config', () => {
     config.value = newConfig
   }
 
-  function setConfigValue(key, value) {
+  async function setConfigValue(key, value) {
     config.value[key] = value
-    configApi.updateConfigBatch({ [key]: value }).then((data) => {
-      console.debug('Success:', data)
-      setConfig(data)
-    })
+    const data = await configApi.updateConfigBatch({ [key]: value })
+    console.debug('Success:', data)
+    setConfig(data)
+    return data
   }
 
   async function refreshConfig() {

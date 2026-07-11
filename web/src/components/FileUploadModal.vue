@@ -736,7 +736,6 @@ const formatFileSize = (size) => {
 // OCR服务健康状态
 const ocrHealthStatus = ref({
   rapid_ocr: { status: 'unknown', message: '' },
-  mineru_ocr: { status: 'unknown', message: '' },
   mineru_official: { status: 'unknown', message: '' },
   pp_structure_v3_ocr: { status: 'unknown', message: '' },
   deepseek_ocr: { status: 'unknown', message: '' },
@@ -836,14 +835,9 @@ const ocrEngineOptions = [
     description: 'ONNX with RapidOCR'
   },
   {
-    value: 'mineru_ocr',
-    label: 'MinerU OCR',
-    description: 'MinerU OCR'
-  },
-  {
     value: 'mineru_official',
-    label: 'MinerU Official API',
-    description: 'MinerU Official API'
+    label: 'MinerU 官方 API',
+    description: 'MinerU 官方 API'
   },
   {
     value: 'pp_structure_v3_ocr',

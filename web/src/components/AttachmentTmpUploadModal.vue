@@ -173,6 +173,14 @@ const emit = defineEmits(['update:open', 'added'])
 
 const configStore = useConfigStore()
 const DEFAULT_OCR_ENGINE = 'rapid_ocr'
+const allowedOcrMethods = new Set([
+  'rapid_ocr',
+  'mineru_official',
+  'pp_structure_v3_ocr',
+  'deepseek_ocr',
+  'paddleocr_vl_1_6',
+  'paddleocr_pp_ocrv6'
+])
 const fileItems = ref([])
 const confirming = ref(false)
 let localIdSeed = 0
@@ -181,8 +189,7 @@ let consumedInitialFilesKey = 0
 const methodLabels = {
   disable: 'PDF 文本提取',
   rapid_ocr: 'RapidOCR',
-  mineru_ocr: 'MinerU OCR',
-  mineru_official: 'MinerU Official',
+  mineru_official: 'MinerU 官方 API',
   pp_structure_v3_ocr: 'PP-Structure V3',
   deepseek_ocr: 'DeepSeek OCR',
   paddleocr_vl_1_6: 'PaddleOCR-VL-1.6',
@@ -191,7 +198,6 @@ const methodLabels = {
 
 const ocrMethodKeys = [
   'rapid_ocr',
-  'mineru_ocr',
   'mineru_official',
   'pp_structure_v3_ocr',
   'deepseek_ocr',
@@ -239,35 +245,44 @@ const getErrorMessage = (error, fallback = '操作失败') => {
   return error?.response?.data?.detail || error?.message || fallback
 }
 
+const normalizeParseMethods = (parseMethods) => {
+  if (!Array.isArray(parseMethods)) return []
+  return parseMethods.filter((method) => allowedOcrMethods.has(method))
+}
+
 const getDefaultParseMethod = (parseMethods) => {
-  if (!Array.isArray(parseMethods) || parseMethods.length === 0) {
+  const availableMethods = normalizeParseMethods(parseMethods)
+  if (availableMethods.length === 0) {
     return null
   }
   const configuredEngine = String(
     configStore.config?.default_ocr_engine || DEFAULT_OCR_ENGINE
   ).trim()
-  if (parseMethods.includes(configuredEngine)) {
+  if (availableMethods.includes(configuredEngine)) {
     return configuredEngine
   }
-  if (parseMethods.includes(DEFAULT_OCR_ENGINE)) {
+  if (availableMethods.includes(DEFAULT_OCR_ENGINE)) {
     return DEFAULT_OCR_ENGINE
   }
-  return parseMethods[0]
+  return availableMethods[0]
 }
 
-const normalizeTmpUpload = (response) => ({
-  tmpFileId: response.tmp_file_id,
-  fileName: response.file_name,
-  fileType: response.file_type,
-  fileSize: response.file_size,
-  bucketName: response.bucket_name,
-  objectName: response.object_name,
-  minioUrl: response.minio_url,
-  parseSupported: response.parse_supported,
-  parseMethods: response.parse_methods || [],
-  selectedParseMethod: getDefaultParseMethod(response.parse_methods || []),
-  parseMethodTouched: false
-})
+const normalizeTmpUpload = (response) => {
+  const parseMethods = normalizeParseMethods(response.parse_methods)
+  return {
+    tmpFileId: response.tmp_file_id,
+    fileName: response.file_name,
+    fileType: response.file_type,
+    fileSize: response.file_size,
+    bucketName: response.bucket_name,
+    objectName: response.object_name,
+    minioUrl: response.minio_url,
+    parseSupported: Boolean(response.parse_supported && parseMethods.length),
+    parseMethods,
+    selectedParseMethod: getDefaultParseMethod(parseMethods),
+    parseMethodTouched: false
+  }
+}
 
 watch(
   () => configStore.config?.default_ocr_engine,

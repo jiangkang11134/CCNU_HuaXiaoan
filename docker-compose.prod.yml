@@ -15,7 +15,7 @@ x-api-worker-env: &api-worker-env
   MILVUS_URI: ${MILVUS_URI:-http://milvus:19530}
   MILVUS_DB_NAME: ${MILVUS_DB_NAME:-default}
   MILVUS_TOKEN: ${MILVUS_TOKEN:-}
-  MINERU_API_URI: ${MINERU_API_URI:-http://mineru-api:30001}
+  MINERU_API_URI: ${MINERU_API_URI:-https://mineru.net/api/v4}
   PADDLEX_URI: ${PADDLEX_URI:-http://paddlex:8080}
   MINIO_URI: ${MINIO_URI:-http://minio:9000}
   SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-provisioner}
@@ -37,8 +37,8 @@ services:
     networks:
       - app-network
     volumes:
-      - ./docker/volumes/yuxi:/app/saves
-      - ./docker/volumes/models:/app/models
+      - ${YUXI_DATA_DIR:-./docker/volumes}/yuxi:/app/saves
+      - ${YUXI_DATA_DIR:-./docker/volumes}/models:/app/models
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -75,8 +75,8 @@ services:
     networks:
       - app-network
     volumes:
-      - ./docker/volumes/yuxi:/app/saves
-      - ./docker/volumes/models:/app/models
+      - ${YUXI_DATA_DIR:-./docker/volumes}/yuxi:/app/saves
+      - ${YUXI_DATA_DIR:-./docker/volumes}/models:/app/models
     extra_hosts:
       - "host.docker.internal:host-gateway"
     env_file:
@@ -101,7 +101,7 @@ services:
       dockerfile: Dockerfile
     container_name: sandbox-provisioner
     volumes:
-      - ./docker/volumes/yuxi:/app/saves
+      - ${YUXI_DATA_DIR:-./docker/volumes}/yuxi:/app/saves
       - ./docker/sandbox_provisioner/sandbox.env:/app/sandbox.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -164,8 +164,8 @@ services:
     image: neo4j:5.26
     container_name: graph
     volumes:
-      - ./docker/volumes/neo4j/data:/data
-      - ./docker/volumes/neo4j/logs:/var/lib/neo4j/logs
+      - ${YUXI_DATA_DIR:-./docker/volumes}/neo4j/data:/data
+      - ${YUXI_DATA_DIR:-./docker/volumes}/neo4j/logs:/var/lib/neo4j/logs
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:7474 || exit 1"]
       interval: 20s
@@ -190,7 +190,7 @@ services:
       - ETCD_QUOTA_BACKEND_BYTES=4294967296
       - ETCD_SNAPSHOT_COUNT=50000
     volumes:
-      - ./docker/volumes/milvus/etcd:/etcd
+      - ${YUXI_DATA_DIR:-./docker/volumes}/milvus/etcd:/etcd
     command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
     healthcheck:
       test: ["CMD", "etcdctl", "endpoint", "health"]
@@ -209,8 +209,8 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
-      - ./docker/volumes/milvus/minio:/minio_data
-      - ./docker/volumes/milvus/minio_config:/root/.minio
+      - ${YUXI_DATA_DIR:-./docker/volumes}/milvus/minio:/minio_data
+      - ${YUXI_DATA_DIR:-./docker/volumes}/milvus/minio_config:/root/.minio
     command: minio server /minio_data --address 0.0.0.0:9000 --console-address 0.0.0.0:9001
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -233,8 +233,8 @@ services:
       MINIO_ADDRESS: minio:9000
       MILVUS_LOG_LEVEL: error
     volumes:
-      - ./docker/volumes/milvus/milvus:/var/lib/milvus
-      - ./docker/volumes/milvus/logs:/var/lib/milvus/logs
+      - ${YUXI_DATA_DIR:-./docker/volumes}/milvus/milvus:/var/lib/milvus
+      - ${YUXI_DATA_DIR:-./docker/volumes}/milvus/logs:/var/lib/milvus/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 60s
@@ -259,7 +259,7 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-yuxi}
       - TZ=${TZ:-Asia/Shanghai}
     volumes:
-      - ./docker/volumes/postgresql:/var/lib/postgresql/data
+      - ${YUXI_DATA_DIR:-./docker/volumes}/postgresql:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-yuxi} || exit 1"]
       interval: 5s
@@ -279,45 +279,7 @@ services:
       timeout: 5s
       retries: 10
     volumes:
-      - ./docker/volumes/redis:/data
-    networks:
-      - app-network
-    restart: unless-stopped
-
-  mineru-api:
-    build:
-      context: .
-      dockerfile: docker/mineru.Dockerfile
-    image: mineru-vllm:latest
-    container_name: mineru-api
-    profiles:
-      - all
-    env_file:
-      - .env.prod
-    ports:
-      - 30001:30001
-    environment:
-      MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-api
-    command:
-      --host 0.0.0.0
-      --port 30001
-      # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
-      # parameters for vllm-engine
-      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
-    ulimits:
-      memlock: -1
-      stack: 67108864
-    ipc: host
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:30001/health || exit 1"]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]  # Modify for multiple GPUs: ["0", "1"]
-              capabilities: [gpu]
+      - ${YUXI_DATA_DIR:-./docker/volumes}/redis:/data
     networks:
       - app-network
     restart: unless-stopped
@@ -331,7 +293,7 @@ services:
     profiles:
       - all
     volumes:
-      - ./docker/volumes/paddlex:/paddlex
+      - ${YUXI_DATA_DIR:-./docker/volumes}/paddlex:/paddlex
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 20s
