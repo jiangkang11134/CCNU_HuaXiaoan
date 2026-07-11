@@ -9,7 +9,7 @@
               <div class="setting-content">
                 <ModelSelectorComponent
                   @select-model="handleChatModelSelect"
-                  :model_spec="configStore.config?.default_model"
+                  :model_spec="draft.default_model"
                   placeholder="请选择默认模型"
                 />
               </div>
@@ -19,7 +19,7 @@
               <div class="setting-content">
                 <ModelSelectorComponent
                   @select-model="handleFastModelSelect"
-                  :model_spec="configStore.config?.fast_model"
+                  :model_spec="draft.fast_model"
                   placeholder="请选择模型"
                 />
               </div>
@@ -30,8 +30,8 @@
               <div class="setting-label">{{ items?.embed_model?.des }}</div>
               <div class="setting-content">
                 <EmbeddingModelSelector
-                  :value="configStore.config?.embed_model"
-                  @change="handleChange('embed_model', $event)"
+                  :value="draft.embed_model"
+                  @change="setDraftValue('embed_model', $event)"
                   style="width: 100%"
                 />
               </div>
@@ -40,8 +40,8 @@
               <div class="setting-label">{{ items?.reranker?.des }}</div>
               <div class="setting-content">
                 <RerankModelSelector
-                  :value="configStore.config?.reranker"
-                  @change="handleChange('reranker', $event)"
+                  :value="draft.reranker"
+                  @change="setDraftValue('reranker', $event)"
                   style="width: 100%"
                 />
               </div>
@@ -54,8 +54,8 @@
               </div>
               <div class="setting-content">
                 <a-select
-                  :value="configStore.config?.default_ocr_engine || 'rapid_ocr'"
-                  @change="handleChange('default_ocr_engine', $event)"
+                  :value="draft.default_ocr_engine"
+                  @update:value="setDraftValue('default_ocr_engine', $event)"
                   class="full-width"
                 >
                   <a-select-option
@@ -74,15 +74,11 @@
             <div class="col-item">
               <div class="setting-label">Tavily 网页搜索 API Key</div>
               <div class="setting-content">
-                <a-input-group compact class="secret-input-group">
-                  <a-input-password
-                    :value="secretDrafts.tavily_api_key"
-                    :placeholder="secretPlaceholder('tavily_api_key')"
-                    @change="setSecretDraft('tavily_api_key', $event.target.value)"
-                    @pressEnter="saveSecret('tavily_api_key')"
-                  />
-                  <a-button :loading="secretSaving.tavily_api_key" @click="saveSecret('tavily_api_key')">保存</a-button>
-                </a-input-group>
+                <a-input-password
+                  :value="secretDrafts.tavily_api_key"
+                  :placeholder="secretPlaceholder('tavily_api_key')"
+                  @update:value="setSecretDraft('tavily_api_key', $event)"
+                />
               </div>
             </div>
             <div class="col-item">
@@ -92,7 +88,7 @@
                   :value="urlWhitelistText"
                   :auto-size="{ minRows: 1, maxRows: 4 }"
                   placeholder="每行或逗号分隔一个域名"
-                  @change="handleUrlWhitelistChange"
+                  @update:value="setUrlWhitelistText"
                 />
               </div>
             </div>
@@ -101,25 +97,20 @@
             <div class="col-item">
               <div class="setting-label">MinerU 官方 API Key</div>
               <div class="setting-content">
-                <a-input-group compact class="secret-input-group">
-                  <a-input-password
-                    :value="secretDrafts.mineru_api_key"
-                    :placeholder="secretPlaceholder('mineru_api_key')"
-                    @change="setSecretDraft('mineru_api_key', $event.target.value)"
-                    @pressEnter="saveSecret('mineru_api_key')"
-                  />
-                  <a-button :loading="secretSaving.mineru_api_key" @click="saveSecret('mineru_api_key')">保存</a-button>
-                </a-input-group>
+                <a-input-password
+                  :value="secretDrafts.mineru_api_key"
+                  :placeholder="secretPlaceholder('mineru_api_key')"
+                  @update:value="setSecretDraft('mineru_api_key', $event)"
+                />
               </div>
             </div>
             <div class="col-item">
               <div class="setting-label">MinerU 官方 API 基础地址</div>
               <div class="setting-content">
                 <a-input
-                  :value="configStore.config?.mineru_api_uri"
+                  :value="draft.mineru_api_uri"
                   placeholder="https://mineru.net/api/v4"
-                  @change="handleTextChange('mineru_api_uri', $event.target.value)"
-                  @pressEnter="handleTextChange('mineru_api_uri', $event.target.value)"
+                  @update:value="setDraftValue('mineru_api_uri', $event)"
                 />
               </div>
             </div>
@@ -129,25 +120,21 @@
               <div class="setting-label">MinerU 超时时间（秒）</div>
               <div class="setting-content">
                 <a-input-number
-                  :value="configStore.config?.mineru_timeout_seconds || 1800"
+                  :value="draft.mineru_timeout_seconds"
                   :min="1"
                   class="full-width"
-                  @change="handleChange('mineru_timeout_seconds', $event)"
+                  @update:value="setDraftValue('mineru_timeout_seconds', $event)"
                 />
               </div>
             </div>
             <div class="col-item">
               <div class="setting-label">PaddleOCR API Token</div>
               <div class="setting-content">
-                <a-input-group compact class="secret-input-group">
-                  <a-input-password
-                    :value="secretDrafts.paddleocr_api_token"
-                    :placeholder="secretPlaceholder('paddleocr_api_token')"
-                    @change="setSecretDraft('paddleocr_api_token', $event.target.value)"
-                    @pressEnter="saveSecret('paddleocr_api_token')"
-                  />
-                  <a-button :loading="secretSaving.paddleocr_api_token" @click="saveSecret('paddleocr_api_token')">保存</a-button>
-                </a-input-group>
+                <a-input-password
+                  :value="secretDrafts.paddleocr_api_token"
+                  :placeholder="secretPlaceholder('paddleocr_api_token')"
+                  @update:value="setSecretDraft('paddleocr_api_token', $event)"
+                />
               </div>
             </div>
           </div>
@@ -156,23 +143,19 @@
               <div class="setting-label">PaddleOCR 任务地址</div>
               <div class="setting-content">
                 <a-input
-                  :value="configStore.config?.paddleocr_api_url"
-                  @change="handleTextChange('paddleocr_api_url', $event.target.value)"
+                  :value="draft.paddleocr_api_url"
+                  @update:value="setDraftValue('paddleocr_api_url', $event)"
                 />
               </div>
             </div>
             <div class="col-item">
               <div class="setting-label">DeepSeek OCR API Key</div>
               <div class="setting-content">
-                <a-input-group compact class="secret-input-group">
-                  <a-input-password
-                    :value="secretDrafts.deepseek_ocr_api_key"
-                    :placeholder="secretPlaceholder('deepseek_ocr_api_key')"
-                    @change="setSecretDraft('deepseek_ocr_api_key', $event.target.value)"
-                    @pressEnter="saveSecret('deepseek_ocr_api_key')"
-                  />
-                  <a-button :loading="secretSaving.deepseek_ocr_api_key" @click="saveSecret('deepseek_ocr_api_key')">保存</a-button>
-                </a-input-group>
+                <a-input-password
+                  :value="secretDrafts.deepseek_ocr_api_key"
+                  :placeholder="secretPlaceholder('deepseek_ocr_api_key')"
+                  @update:value="setSecretDraft('deepseek_ocr_api_key', $event)"
+                />
               </div>
             </div>
           </div>
@@ -186,28 +169,25 @@
         <div class="card">
           <span class="label">{{ items?.enable_content_guard?.des }}</span>
           <a-switch
-            :checked="configStore.config?.enable_content_guard"
-            @change="handleChange('enable_content_guard', $event)"
+            :checked="draft.enable_content_guard"
+            @update:checked="setDraftValue('enable_content_guard', $event)"
           />
         </div>
-        <div class="card" v-if="configStore.config?.enable_content_guard">
+        <div class="card" v-if="draft.enable_content_guard">
           <span class="label">{{ items?.enable_content_guard_llm?.des }}</span>
           <a-switch
-            :checked="configStore.config?.enable_content_guard_llm"
-            @change="handleChange('enable_content_guard_llm', $event)"
+            :checked="draft.enable_content_guard_llm"
+            @update:checked="setDraftValue('enable_content_guard_llm', $event)"
           />
         </div>
         <div
           class="card card-select"
-          v-if="
-            configStore.config?.enable_content_guard &&
-            configStore.config?.enable_content_guard_llm
-          "
+          v-if="draft.enable_content_guard && draft.enable_content_guard_llm"
         >
           <span class="label">{{ items?.content_guard_llm_model?.des }}</span>
           <ModelSelectorComponent
             @select-model="handleContentGuardModelSelect"
-            :model_spec="configStore.config?.content_guard_llm_model"
+            :model_spec="draft.content_guard_llm_model"
             placeholder="请选择模型"
           />
         </div>
@@ -217,8 +197,7 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
-import { message } from 'ant-design-vue'
+import { computed, reactive, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { useUserStore } from '@/stores/user'
 import ModelSelectorComponent from '@/components/ModelSelectorComponent.vue'
@@ -232,22 +211,42 @@ defineProps({
   }
 })
 
+const emit = defineEmits(['dirty-change'])
+
+const CONFIG_DRAFT_KEYS = [
+  'default_model',
+  'fast_model',
+  'embed_model',
+  'reranker',
+  'default_ocr_engine',
+  'url_whitelist',
+  'mineru_api_uri',
+  'mineru_timeout_seconds',
+  'paddleocr_api_url',
+  'enable_content_guard',
+  'enable_content_guard_llm',
+  'content_guard_llm_model'
+]
+
+const SECRET_KEYS = [
+  'tavily_api_key',
+  'mineru_api_key',
+  'paddleocr_api_token',
+  'deepseek_ocr_api_key'
+]
+
 const configStore = useConfigStore()
 const userStore = useUserStore()
 const items = computed(() => configStore.config?._config_items || {})
+const isConfigReady = computed(() => Object.keys(configStore.config || {}).length > 0)
+const draft = reactive({})
 const secretDrafts = reactive({
   tavily_api_key: '',
   mineru_api_key: '',
   paddleocr_api_token: '',
   deepseek_ocr_api_key: ''
 })
-const secretSaving = reactive({
-  tavily_api_key: false,
-  mineru_api_key: false,
-  paddleocr_api_token: false,
-  deepseek_ocr_api_key: false
-})
-const urlWhitelistText = computed(() => (configStore.config?.url_whitelist || []).join('\n'))
+const urlWhitelistText = computed(() => (Array.isArray(draft.url_whitelist) ? draft.url_whitelist : []).join('\n'))
 const ocrEngineOptions = [
   { value: 'disable', label: '不启用' },
   { value: 'rapid_ocr', label: 'RapidOCR (ONNX)' },
@@ -258,74 +257,125 @@ const ocrEngineOptions = [
   { value: 'paddleocr_pp_ocrv6', label: 'PP-OCRv6' }
 ]
 
-const handleChange = async (key, e) => {
-  try {
-    await configStore.setConfigValue(key, e)
-    message.success('配置已保存')
-  } catch (error) {
-    message.error(error.message || '配置保存失败')
-  }
+const cloneConfigValue = (value) => {
+  if (Array.isArray(value)) return [...value]
+  if (value && typeof value === 'object') return { ...value }
+  return value
 }
 
-const handleTextChange = async (key, value) => {
-  try {
-    await configStore.setConfigValue(key, value)
-    message.success('配置已保存')
-  } catch (error) {
-    message.error(error.message || '配置保存失败')
+const areValuesEqual = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
+
+const syncDraftFromConfig = () => {
+  const source = configStore.config || {}
+  CONFIG_DRAFT_KEYS.forEach((key) => {
+    draft[key] = cloneConfigValue(source[key])
+  })
+  if (!draft.default_ocr_engine) {
+    draft.default_ocr_engine = 'rapid_ocr'
   }
+  if (!draft.mineru_timeout_seconds) {
+    draft.mineru_timeout_seconds = 1800
+  }
+  SECRET_KEYS.forEach((key) => {
+    secretDrafts[key] = ''
+  })
 }
 
-const handleUrlWhitelistChange = (event) => {
-  const value = event.target.value || ''
-  const domains = value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-  handleChange('url_whitelist', domains)
+const normalConfigChanges = computed(() => {
+  if (!isConfigReady.value) return {}
+
+  const source = configStore.config || {}
+  const changes = {}
+  CONFIG_DRAFT_KEYS.forEach((key) => {
+    if (!areValuesEqual(draft[key], source[key])) {
+      changes[key] = cloneConfigValue(draft[key])
+    }
+  })
+  return changes
+})
+
+const secretChanges = computed(() => {
+  const changes = {}
+  SECRET_KEYS.forEach((key) => {
+    const value = secretDrafts[key].trim()
+    if (value) {
+      changes[key] = value
+    }
+  })
+  return changes
+})
+
+const hasUnsavedChanges = computed(
+  () => isConfigReady.value && (Object.keys(normalConfigChanges.value).length > 0 || Object.keys(secretChanges.value).length > 0)
+)
+
+const setDraftValue = (key, value) => {
+  draft[key] = value
 }
 
 const setSecretDraft = (key, value) => {
   secretDrafts[key] = value
 }
 
-const saveSecret = async (key) => {
-  const value = secretDrafts[key].trim()
-  if (!value) {
-    message.warning('请输入要保存的配置值')
+const setUrlWhitelistText = (value) => {
+  draft.url_whitelist = value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+const saveAll = async () => {
+  const payload = {
+    ...normalConfigChanges.value,
+    ...secretChanges.value
+  }
+
+  if (Object.keys(payload).length === 0) {
     return
   }
-  secretSaving[key] = true
-  try {
-    await configStore.setConfigValue(key, value)
-    message.success('配置已保存')
-  } catch (error) {
-    message.error(error.message || '配置保存失败')
-  } finally {
-    secretSaving[key] = false
-  }
+
+  await configStore.setConfigValues(payload)
+  syncDraftFromConfig()
 }
 
 const secretPlaceholder = (key) =>
-  configStore.config?.[`${key}_configured`] ? '已配置，输入新值后回车更新' : '未配置，输入后回车保存'
+  configStore.config?.[`${key}_configured`] ? '已配置，输入新值后统一保存' : '未配置，输入后统一保存'
 
 const handleChatModelSelect = (spec) => {
   if (typeof spec === 'string' && spec) {
-    configStore.setConfigValue('default_model', spec)
+    setDraftValue('default_model', spec)
   }
 }
 
 const handleFastModelSelect = (spec) => {
   if (typeof spec === 'string' && spec) {
-    configStore.setConfigValue('fast_model', spec)
+    setDraftValue('fast_model', spec)
   }
 }
 
 const handleContentGuardModelSelect = (spec) => {
   if (typeof spec === 'string' && spec) {
-    configStore.setConfigValue('content_guard_llm_model', spec)
+    setDraftValue('content_guard_llm_model', spec)
   }
 }
+
+watch(
+  () => configStore.config,
+  () => {
+    syncDraftFromConfig()
+  },
+  { immediate: true }
+)
+
+watch(
+  hasUnsavedChanges,
+  (value) => {
+    emit('dirty-change', value)
+  },
+  { immediate: true }
+)
+
+defineExpose({ saveAll, hasUnsavedChanges })
 
 </script>
 
@@ -378,20 +428,6 @@ const handleContentGuardModelSelect = (spec) => {
 
   .inline-title {
     margin-top: 4px;
-  }
-
-  .secret-input-group {
-    display: flex;
-
-    :deep(.ant-input-affix-wrapper) {
-      flex: 1;
-      min-width: 0;
-    }
-
-    :deep(.ant-btn) {
-      width: 64px;
-      flex: 0 0 64px;
-    }
   }
 
   .setting-content {
