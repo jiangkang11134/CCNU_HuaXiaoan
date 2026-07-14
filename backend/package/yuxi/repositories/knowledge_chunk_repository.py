@@ -158,11 +158,21 @@ class KnowledgeChunkRepository:
             )
             return int(result.scalar() or 0)
 
-    async def list_graph_pending_by_kb_id(self, kb_id: str, limit: int) -> list[KnowledgeChunk]:
+    async def list_graph_pending_by_kb_id(
+        self,
+        kb_id: str,
+        limit: int,
+        *,
+        exclude_chunk_ids: set[str] | None = None,
+    ) -> list[KnowledgeChunk]:
+        conditions: list[Any] = [KnowledgeChunk.kb_id == kb_id, KnowledgeChunk.graph_indexed.is_not(True)]
+        if exclude_chunk_ids:
+            conditions.append(KnowledgeChunk.chunk_id.not_in(exclude_chunk_ids))
+
         async with pg_manager.get_async_session_context() as session:
             result = await session.execute(
                 select(KnowledgeChunk)
-                .where(KnowledgeChunk.kb_id == kb_id, KnowledgeChunk.graph_indexed.is_not(True))
+                .where(*conditions)
                 .order_by(KnowledgeChunk.id.asc())
                 .limit(max(limit, 1))
             )

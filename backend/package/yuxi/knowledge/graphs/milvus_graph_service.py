@@ -205,13 +205,16 @@ class MilvusGraphService:
         while True:
             if context is not None:
                 await context.raise_if_cancelled()
-            chunks = await self.chunk_repo.list_graph_pending_by_kb_id(kb_id, batch_size)
-            unprocessed = [c for c in chunks if c.chunk_id not in failed_chunk_ids]
-            if not unprocessed:
+            chunks = await self.chunk_repo.list_graph_pending_by_kb_id(
+                kb_id,
+                batch_size,
+                exclude_chunk_ids=failed_chunk_ids,
+            )
+            if not chunks:
                 break
 
             queue: asyncio.Queue[Any] = asyncio.Queue()
-            for chunk in unprocessed:
+            for chunk in chunks:
                 queue.put_nowait(chunk)
 
             async def worker() -> None:
@@ -262,7 +265,7 @@ class MilvusGraphService:
                         progress = 5.0 + min(90.0, completed / max(total_pending, 1) * 90.0)
                         await context.set_progress(progress, f"图谱构建 {completed}/{total_pending}，失败 {failed}")
 
-            workers = [asyncio.create_task(worker()) for _ in range(min(worker_count, len(unprocessed)))]
+            workers = [asyncio.create_task(worker()) for _ in range(min(worker_count, len(chunks)))]
             try:
                 await asyncio.gather(*workers)
             except Exception:

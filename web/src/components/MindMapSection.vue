@@ -141,6 +141,7 @@ const loadMindmap = async () => {
 
     const mindmap = response.mindmap || null
     mindmapData.value = mindmap
+    await nextTick()
 
     if (markmapInstance) {
       markmapInstance.destroy()
@@ -186,6 +187,7 @@ const generateMindmap = async () => {
     )
 
     mindmapData.value = response.mindmap
+    await nextTick()
 
     const rendered = await renderMindmap(response.mindmap)
     if (rendered) {
@@ -240,6 +242,7 @@ const incrementalUpdate = async () => {
     const response = await mindmapApi.generateMindmap(props.kbId, [], '', true)
 
     mindmapData.value = response.mindmap
+    await nextTick()
 
     const rendered = await renderMindmap(response.mindmap)
     if (rendered) {
@@ -292,6 +295,8 @@ const ensureSvgViewportSize = () => {
 }
 
 const waitForSvgReady = async (maxAttempts = 10) => {
+  await nextTick()
+
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     await nextTick()
     if (ensureSvgViewportSize()) {

@@ -183,6 +183,92 @@ async def test_milvus_graph_service_configure_persists_updated_concurrency():
     assert status["relationship_count"] == 2
 
 
+@pytest.mark.asyncio
+async def test_milvus_graph_service_build_pending_chunks_skips_failed_chunks_in_next_batch(monkeypatch):
+    kb = SimpleNamespace(
+        kb_type="milvus",
+        embedding_model_spec="test/embedding",
+        additional_params={
+            "graph_build_config": {
+                "locked": True,
+                "extractor_type": "llm",
+                "extractor_options": {"model_spec": "test/model", "concurrency_count": 1},
+            }
+        },
+    )
+    chunks = [
+        SimpleNamespace(
+            chunk_id="chunk_fail",
+            file_id="file_1",
+            content="失败 chunk",
+            extraction_result=None,
+            chunk_index=1,
+        ),
+        SimpleNamespace(
+            chunk_id="chunk_ok",
+            file_id="file_1",
+            content="成功 chunk",
+            extraction_result=None,
+            chunk_index=2,
+        ),
+    ]
+    indexed_chunk_ids = set()
+    observed_exclusions = []
+
+    class KbRepo:
+        async def get_by_kb_id(self, kb_id):
+            return kb
+
+    class ChunkRepo:
+        async def count_graph_pending_by_kb_id(self, kb_id):
+            return len([chunk for chunk in chunks if chunk.chunk_id not in indexed_chunk_ids])
+
+        async def list_graph_pending_by_kb_id(self, kb_id, limit, *, exclude_chunk_ids=None):
+            observed_exclusions.append(set(exclude_chunk_ids or set()))
+            pending = [
+                chunk
+                for chunk in chunks
+                if chunk.chunk_id not in indexed_chunk_ids and chunk.chunk_id not in (exclude_chunk_ids or set())
+            ]
+            return pending[:limit]
+
+        async def update_extraction_result(self, chunk_id, extraction_result):
+            return None
+
+        async def mark_graph_indexed(self, chunk_id, ent_ids=None, tags=None):
+            indexed_chunk_ids.add(chunk_id)
+
+    class GraphRepo:
+        async def upsert_chunk_graph(self, **kwargs):
+            return None
+
+    class GraphVectorStore:
+        async def insert_missing_graph_records(self, **kwargs):
+            return None
+
+    class Extractor:
+        extractor_type = "llm"
+
+        async def extract(self, content, chunk_metadata=None):
+            if chunk_metadata["chunk_id"] == "chunk_fail":
+                raise RuntimeError("extract failed")
+            return {"entities": [{"text": "成功实体"}], "relations": []}
+
+    monkeypatch.setattr(GraphExtractorFactory, "create", lambda extractor_type, options: Extractor())
+
+    service = MilvusGraphService(
+        kb_repo=KbRepo(),
+        chunk_repo=ChunkRepo(),
+        graph_repo=GraphRepo(),
+        graph_vector_store=GraphVectorStore(),
+    )
+    result = await service.build_pending_chunks("kb_test", batch_size=1)
+
+    assert result == {"kb_id": "kb_test", "success": 1, "failed": 1, "remaining": 1}
+    assert indexed_chunk_ids == {"chunk_ok"}
+    assert {"chunk_fail"} in observed_exclusions
+
+
 def test_milvus_graph_service_writes_chunk_entity_and_relation():
     tx = MagicMock()
     session = MagicMock()
