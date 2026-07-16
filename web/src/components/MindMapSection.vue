@@ -135,21 +135,18 @@ const useSvgTextFallback = (() => {
 const loadMindmap = async () => {
   if (!props.kbId) return
 
+  let mindmapToRender = null
   try {
     loading.value = true
     const response = await mindmapApi.getByDatabase(props.kbId)
 
     const mindmap = response.mindmap || null
     mindmapData.value = mindmap
-    await nextTick()
+    mindmapToRender = mindmap
 
     if (markmapInstance) {
       markmapInstance.destroy()
       markmapInstance = null
-    }
-
-    if (mindmap) {
-      await renderMindmap(mindmap)
     }
 
     await checkMindmapDiff()
@@ -169,6 +166,11 @@ const loadMindmap = async () => {
   } finally {
     loading.value = false
   }
+
+  if (mindmapToRender) {
+    await nextTick()
+    await renderMindmap(mindmapToRender)
+  }
 }
 
 /**
@@ -177,6 +179,7 @@ const loadMindmap = async () => {
 const generateMindmap = async () => {
   if (!props.kbId) return
 
+  let mindmapToRender = null
   try {
     generating.value = true
 
@@ -187,9 +190,11 @@ const generateMindmap = async () => {
     )
 
     mindmapData.value = response.mindmap
+    mindmapToRender = response.mindmap
+    generating.value = false
     await nextTick()
 
-    const rendered = await renderMindmap(response.mindmap)
+    const rendered = await renderMindmap(mindmapToRender)
     if (rendered) {
       message.success('思维导图生成成功！')
     }
@@ -200,7 +205,9 @@ const generateMindmap = async () => {
     const errorMsg = error?.message || String(error)
     message.error('生成失败: ' + errorMsg)
   } finally {
-    generating.value = false
+    if (generating.value) {
+      generating.value = false
+    }
   }
 }
 
@@ -236,15 +243,18 @@ const checkMindmapDiff = async () => {
 const incrementalUpdate = async () => {
   if (!props.kbId) return
 
+  let mindmapToRender = null
   try {
     generating.value = true
 
     const response = await mindmapApi.generateMindmap(props.kbId, [], '', true)
 
     mindmapData.value = response.mindmap
+    mindmapToRender = response.mindmap
+    generating.value = false
     await nextTick()
 
-    const rendered = await renderMindmap(response.mindmap)
+    const rendered = await renderMindmap(mindmapToRender)
     if (rendered) {
       if (response.no_ai_needed) {
         message.success('思维导图已更新（自动清理已删除文件）')
@@ -259,7 +269,9 @@ const incrementalUpdate = async () => {
     const errorMsg = error?.message || String(error)
     message.error('增量更新失败: ' + errorMsg)
   } finally {
-    generating.value = false
+    if (generating.value) {
+      generating.value = false
+    }
   }
 }
 
@@ -294,7 +306,7 @@ const ensureSvgViewportSize = () => {
   return true
 }
 
-const waitForSvgReady = async (maxAttempts = 10) => {
+const waitForSvgReady = async (maxAttempts = 30) => {
   await nextTick()
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
