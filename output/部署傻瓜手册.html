@@ -1,0 +1,172 @@
+<html><head><meta charset='utf-8'><style>
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+  h1 { font-size: 24pt; border-bottom: 2px solid #2c3e50; padding-bottom: 6px; }
+  h2 { font-size: 18pt; color: #2c3e50; border-left: 4px solid #2c3e50; padding-left: 8px; }
+  h3 { font-size: 14pt; color: #34495e; }
+  h4 { font-size: 12pt; color: #34495e; }
+  code { background: #f4f4f4; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; }
+  pre { background: #f4f4f4; padding: 10px; border-radius: 5px; border: 1px solid #ddd;
+        font-family: Consolas, monospace; font-size: 9pt; white-space: pre-wrap; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+  th, td { border: 1px solid #bbb; padding: 5px 8px; font-size: 10pt; }
+  th { background: #2c3e50; color: #fff; }
+  tbody tr:nth-child(even) { background: #f6f8fa; }
+  p.note { background: #fff8e1; border: 1px solid #ffd54f; padding: 8px 10px;
+           border-radius: 4px; }
+  p.warn { background: #fdecea; border: 1px solid #ef9a9a; padding: 8px 10px;
+           border-radius: 4px; }
+</style>
+</head><body>
+<h1>华小安（Yuxi）傻瓜式部署手册</h1>
+<p class="note">适用对象：拿到本仓库全部文件的部署人员（已 <code>git clone</code> 或拷贝了整个项目文件夹）。 目标：在一台 <strong>Linux 服务器</strong> 上把整套系统跑起来，并能在浏览器访问、能对话。 写文档时对照的真实文件：<code>docker-compose.prod.yml</code>、<code>scripts/deploy_prod.sh</code>、<code>scripts/init_prod_env.sh</code>、<code>.env.template</code>、各 <code>docker/*.Dockerfile</code>。命令均可整段复制粘贴。</p>
+<p>---</p>
+<h2>0. 先说结论（避免再问"docker 里怎么什么都没有"）</h2>
+<p>仓库里 docker 部署需要的文件<strong>全都在 git 里、一个不少</strong>：</p>
+<pre><code>docker-compose.prod.yml      # 生产编排（核心）
+docker-compose.yml           # 开发编排
+docker/api.Dockerfile        # 后端镜像
+docker/web.Dockerfile        # 前端镜像
+docker/paddlex.Dockerfile    # OCR 镜像（可选，需 GPU）
+docker/mineru.Dockerfile
+docker/nginx/*.conf          # 反代配置
+docker/sandbox_provisioner/* # 沙箱服务镜像
+docker/PP-StructureV3.yaml
+.env.template                # 环境变量模板（在 git 里）
+scripts/init_prod_env.sh     # 生成 .env.prod 的脚本（在 git 里）
+scripts/deploy_prod.sh       # 一键部署脚本（在 git 里）</code></pre>
+<p><strong>唯一故意不在 git 里的文件是 <code>.env.prod</code></strong>（里面放密钥，不能进版本库）。它必须由你本地生成（见第 4 步）。所以"docker 里什么都没有"的真实含义通常是：<strong>没生成 <code>.env.prod</code> + 没装/启动 Docker + 没拉镜像</strong>——不是仓库缺文件。</p>
+<p>---</p>
+<h2>1. 准备一台服务器</h2>
+<p>最低配置建议（跑得动 Milvus + Neo4j 这一堆）：</p>
+<table><thead><tr><th>项目</th><th>最低</th><th>推荐</th></tr></thead><tbody><tr><td>内存</td><td>8 GB</td><td>16 GB 及以上</td></tr><tr><td>CPU</td><td>2 核</td><td>4 核及以上</td></tr><tr><td>磁盘</td><td>40 GB 可用</td><td>80 GB 及以上（向量库/图库数据会增长）</td></tr><tr><td>系统</td><td>Ubuntu 20.04/22.04 64 位</td><td>Ubuntu 22.04</td></tr><tr><td>外网</td><td>首次部署需要能联网拉镜像</td><td>长期可内网</td></tr></tbody></table>
+<p class="note">如果你<strong>服务器本身不能联网</strong>，请看文末「附录 B：完全离线部署」。绝大多数云服务器（阿里云/腾讯云/华为云）都有外网，直接用第 5 步的最简流程即可。</p>
+<p>安全组 / 防火墙：放行 <strong>TCP 80</strong>（网页访问）。<code>5432</code>（PostgreSQL）默认只在容器网络内，不建议对公网开放。</p>
+<p>---</p>
+<h2>2. 把代码弄到服务器上</h2>
+<p>两种方式任选其一。</p>
+<h3>方式 A：git clone（服务器能联网、且仓库对他可见）</h3>
+<pre><code># 在服务器上
+cd /opt
+git clone https://gitee.com/jiang-kang123/CCNU_HuaXiaoan.git
+cd CCNU_HuaXiaoan</code></pre>
+<p class="note">若仓库是私有的，把上面 URL 换成带用户名令牌的形式： <code>git clone https://用户名:令牌@gitee.com/jiang-kang123/CCNU_HuaXiaoan.git</code> 之后升级代码用 <code>git pull</code> 即可。</p>
+<h3>方式 B：直接拷文件夹（服务器不能联网，或图省事）</h3>
+<p>在本机（代码齐全的那台机器）把整个 <code>CCNU_HuaXiaoan</code> 文件夹打成包，传到服务器：</p>
+<pre><code># 本机
+cd 父目录
+tar czf yuxi.tar.gz CCNU_HuaXiaoan
+scp yuxi.tar.gz 用户名@服务器IP:/opt/
+
+# 服务器
+cd /opt &amp;&amp; tar xzf yuxi.tar.gz &amp;&amp; cd CCNU_HuaXiaoan</code></pre>
+<p class="warn">⚠️ 拷贝时<strong>不要漏掉隐藏文件</strong>（<code>.env.template</code> 不是隐藏的没问题，但 <code>.gitignore</code> 等无所谓）。只要 <code>docker-compose.prod.yml</code>、<code>docker/</code> 目录、<code>scripts/</code> 目录、<code>backend/</code>、<code>web/</code> 在就行。</p>
+<p>---</p>
+<h2>3. 在服务器上安装 Docker 和 Docker Compose</h2>
+<pre><code># 一键安装 Docker（Ubuntu）
+curl -fsSL https://get.daocloud.io/docker | bash -s docker --mirror Aliyun
+# 或者用官方： curl -fsSL https://get.docker.com | sh
+
+# 启动并设为开机自启
+sudo systemctl enable --now docker
+
+# 确认版本（Docker 24+ 自带 compose 子命令）
+docker --version
+docker compose version</code></pre>
+<p class="note">如果 <code>docker compose version</code> 报错，说明是老版本，需要单独装插件： <code>sudo apt-get install -y docker-compose-plugin</code> 本文所有命令都用 <code>docker compose</code>（带空格），不是老式的 <code>docker-compose</code>。</p>
+<p>把当前用户加入 docker 组，免得每条命令都加 <code>sudo</code>（可选但推荐，做完<strong>重新登录</strong>生效）：</p>
+<pre><code>sudo usermod -aG docker $USER</code></pre>
+<p>---</p>
+<h2>4. 生成 <code>.env.prod</code>（最关键、最容易被漏的一步）</h2>
+<p>仓库里<strong>没有</strong> <code>.env.prod</code>，必须本地生成。脚本会自动复制 <code>.env.template</code> 并填好密钥、实例 ID、数据目录：</p>
+<pre><code># 在服务器上的项目根目录 CCNU_HuaXiaoan 里
+bash scripts/init_prod_env.sh</code></pre>
+<p>跑完会看到：</p>
+<pre><code>Production env ready: .env.prod
+YUXI_DATA_DIR=./docker/volumes</code></pre>
+<p>脚本已经帮你自动设置好了：</p>
+<ul><li><code>YUXI_ENV=production</code></li><li><code>JWT_SECRET_KEY</code>（自动生成 32 字节随机值）</li><li><code>YUXI_INSTANCE_ID</code>（自动生成）</li><li><code>YUXI_DATA_DIR=./docker/volumes</code>（数据持久化目录）</li></ul>
+<h3>4.1（强烈建议）改成生产级配置</h3>
+<p>用编辑器打开 <code>.env.prod</code> 改这几项（不改也能跑，但生产环境建议改）：</p>
+<pre><code>nano .env.prod      # 或 vim .env.prod</code></pre>
+<table><thead><tr><th>变量</th><th>默认值</th><th>建议</th></tr></thead><tbody><tr><td><code>POSTGRES_PASSWORD</code></td><td><code>postgres</code></td><td>改成强密码</td></tr><tr><td><code>NEO4J_PASSWORD</code></td><td><code>0123456789</code></td><td>改成强密码</td></tr><tr><td><code>MINIO_SECRET_KEY</code></td><td><code>minioadmin</code></td><td>改成强密码</td></tr><tr><td><code>YUXI_DATA_DIR</code></td><td><code>./docker/volumes</code></td><td><strong>改成代码目录外的绝对路径</strong>，例如 <code>/data/yuxi</code>，避免重新拉代码时误删数据</td></tr><tr><td><code>YUXI_SUPER_ADMIN_NAME</code></td><td>空</td><td>填一个管理员账号名，首次启动会自动建号</td></tr><tr><td><code>YUXI_SUPER_ADMIN_PASSWORD</code></td><td>空</td><td>填管理员密码</td></tr><tr><td><code>HOST_IP</code></td><td>空</td><td>填服务器公网 IP（容器需要生成外链时才用）</td></tr></tbody></table>
+<p class="note">改完 <code>YUXI_DATA_DIR</code> 后记得建目录并授权：<code>mkdir -p /data/yuxi &amp;&amp; chmod 777 /data/yuxi</code>（或让 docker 自行创建即可）。</p>
+<p class="note">注意：模型供应商的 Key、OCR Key、搜索 Key <strong>不在这里填</strong>，登录后台后在「模型供应商 / 基本设置」里配（见第 8 步）。<code>.env.template</code> 顶部注释也写明了这一点。</p>
+<p>---</p>
+<h2>5. 拉镜像 + 构建 + 启动（核心三步）</h2>
+<p>镜像来源分两类：</p>
+<ul><li><strong>基础镜像</strong>（neo4j、milvus、postgres、redis、minio、etcd、nginx、python、node 等）：Docker 会自动从网上拉。</li><li><strong>本项目镜像</strong>（api、web、sandbox-provisioner，以及可选的 paddlex）：由 <code>docker compose</code> 现场构建（构建时需要联网装 Python/Node 依赖）。</li></ul>
+<p>直接一条命令搞定（在项目根目录）：</p>
+<pre><code>docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build</code></pre>
+<p>这条命令会：</p>
+<ol><li>拉取所有基础镜像；</li><li>构建 <code>api</code>、<code>worker</code>、<code>web</code>、<code>sandbox-provisioner</code>（首次构建较慢，10–30 分钟，取决于网速，因为要装 libreoffice、中文字体、Python 依赖、Node 依赖）；</li><li>按依赖顺序启动全部容器（<code>postgres</code>→<code>redis</code>→<code>minio</code>→<code>etcd</code>→<code>milvus</code>→<code>sandbox-provisioner</code>→<code>api</code>/<code>worker</code>→<code>web</code>）。</li></ol>
+<p class="note">想看实时日志/进度，另开一个终端：<code>docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f</code> 想只重建某一个：<code>docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build api</code></p>
+<p class="note">关于 paddlex（OCR，需要 NVIDIA GPU）：默认<strong>不会</strong>启动（它在 <code>profiles: [all]</code> 里）。普通问答场景不需要它。如果服务器有 GPU 且要用 OCR： <code>docker compose -f docker-compose.prod.yml --env-file .env.prod --profile all up -d --build</code></p>
+<p>---</p>
+<h2>6. 验证是否真的起来了</h2>
+<pre><code># 看所有容器状态（STATUS 应为 Up / healthy）
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+
+# 健康检查（返回 ok / healthy 字样即成功）
+curl http://127.0.0.1/api/system/health</code></pre>
+<p>在<strong>你自己电脑的浏览器</strong>打开：</p>
+<pre><code>http://服务器公网IP/</code></pre>
+<p>能看到登录/首页就说明前端 + 后端 + 反代都通了。</p>
+<p class="note">如果网页打不开，先确认：① 服务器安全组放行了 80；② 容器 <code>web-prod</code>、<code>api-prod</code> 都是 Up；③ <code>curl http://127.0.0.1/api/system/health</code> 在服务器本地能通。</p>
+<p>---</p>
+<h2>7. 数据初始化（首次）</h2>
+<p>首次启动后，系统会自己建库、跑迁移。无需手动操作。 如果你在第 4.1 步设了 <code>YUXI_SUPER_ADMIN_NAME</code> / <code>YUXI_SUPER_ADMIN_PASSWORD</code>，管理员账号会在初始化时自动创建；否则按页面首次注册提示创建。</p>
+<p>---</p>
+<h2>8. 登录后台配置模型供应商（<strong>不配就不能对话</strong>）</h2>
+<p>系统能打开 ≠ 能回答问题。模型供应商没配，问答会失败。</p>
+<ol><li>浏览器打开 <code>http://服务器公网IP/</code>，用管理员账号登录。</li><li>进入后台「<strong>模型供应商</strong>」，填一家大模型供应商的：</li></ol>
+<ul><li><code>base_url</code>（接口地址）</li><li><code>api_key</code>（密钥）</li></ul>
+<ol><li>设置默认模型（聊天模型、嵌入模型等）。</li><li>（可选）「基本设置」里配 MinerU（文档解析）、Tavily（联网搜索）等 Key。</li></ol>
+<p class="warn">⚠️ 红线提醒（来自项目规范）：模型 <code>base_url</code> 和 <code>api_key</code> <strong>只放在模型供应商配置里</strong>，不要写进 <code>.env.prod</code>，也不要写进任何 <code>model-routing</code> / SystemKV 配置——那些地方任何登录用户都能读到，绝不能放密钥。</p>
+<p>配完回到对话页试一句"你好"，能正常回复即部署完成。</p>
+<p>---</p>
+<h2>9. 日常运维命令速查</h2>
+<pre><code># 停掉全部（保留数据）
+docker compose -f docker-compose.prod.yml --env-file .env.prod down
+
+# 重启
+docker compose -f docker-compose.prod.yml --env-file .env.prod restart
+
+# 看某个容器日志（如 api）
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f api
+
+# 升级代码后重新部署（若你是 git clone 的）
+git pull
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build</code></pre>
+<p class="note">也可以直接跑一键脚本（它内含 init_prod_env + down + git pull + up --build + 健康检查）： <code>bash scripts/deploy_prod.sh</code> 注意：该脚本里有 <code>git pull</code>，<strong>如果你是方式 B（直接拷文件夹、没有 git remote）</strong>，这步会报错中断，这种情况下请用上面手动的 <code>up -d --build</code> 即可。</p>
+<p>---</p>
+<h2>10. 常见问题排查</h2>
+<p><strong>Q1：构建卡在 <code>uv sync</code> / <code>pnpm install</code> 很久或失败</strong></p>
+<ul><li>首次构建要装大量依赖，耐心等；失败多是网络问题。服务器能联网通常 OK。</li><li>若 PyPI 慢，可在 <code>docker/api.Dockerfile</code> 第 55 行 <code>uv sync</code> 后加 <code>--index-url https://pypi.tuna.tsinghua.edu.cn/simple</code>（脚本注释里也提了这点）。</li></ul>
+<p><strong>Q2：<code>curl http://127.0.0.1/api/system/health</code> 一直不通</strong></p>
+<ul><li><code>docker compose ... ps</code> 看 <code>api-prod</code> 是否 <code>healthy</code>（首次启动 milvus 等要 1–2 分钟）。</li><li><code>docker compose ... logs -f api</code> 看报错，多半是 <code>.env.prod</code> 里数据库密码/地址不对或依赖服务没起来。</li></ul>
+<p><strong>Q3：浏览器打开是空白 / 502</strong></p>
+<ul><li>看 <code>web-prod</code> 和 <code>api-prod</code> 是否都 Up；nginx 反代在 <code>docker/nginx/</code> 里已配好，一般无需改动。</li></ul>
+<p><strong>Q4：改了 <code>.env.prod</code> 不生效</strong></p>
+<ul><li>改完必须重建相关容器：<code>docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build api worker</code>，或直接 <code>down</code> 再 <code>up -d --build</code>。</li></ul>
+<p><strong>Q5：数据库/向量库数据在哪</strong></p>
+<ul><li>都在 <code>YUXI_DATA_DIR</code> 下（默认 <code>./docker/volumes</code>，建议已改到 <code>/data/yuxi</code>）。备份整个目录即可。</li></ul>
+<p>---</p>
+<h2>附录 A：本项目容器清单（心里有数）</h2>
+<table><thead><tr><th>容器</th><th>作用</th><th>对外端口</th></tr></thead><tbody><tr><td><code>web-prod</code></td><td>前端 + nginx 反代</td><td>80</td></tr><tr><td><code>api-prod</code></td><td>后端 API</td><td>容器内部 5050</td></tr><tr><td><code>worker-prod</code></td><td>异步任务 worker</td><td>无</td></tr><tr><td><code>graph</code> (neo4j)</td><td>图数据库</td><td>容器内部 7687/7474</td></tr><tr><td><code>postgres</code></td><td>关系库</td><td>5432（默认映射，建议内网）</td></tr><tr><td><code>redis</code></td><td>缓存/事件流</td><td>容器内部 6379</td></tr><tr><td><code>milvus</code> + <code>etcd</code> + <code>minio</code></td><td>向量库三件套</td><td>容器内部</td></tr><tr><td><code>sandbox-provisioner</code></td><td>代码沙箱调度</td><td>容器内部 8002</td></tr><tr><td><code>paddlex-ocr</code></td><td>OCR（可选，需 GPU）</td><td>容器内部 8080</td></tr></tbody></table>
+<p>生产环境<strong>对外只暴露 80</strong>（和可选 5432）。其余全部在 <code>app-network</code> 内部互通。</p>
+<p>---</p>
+<h2>附录 B：完全离线部署（服务器不能联网）</h2>
+<p>思路：在<strong>一台能联网的机器</strong>上把镜像全部准备好，导出成 tar，拷到服务器再导入。</p>
+<pre><code># === 在能联网的机器（项目根目录）===
+# 1) 先构建 + 拉取所有镜像
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# 2) 导出 compose 涉及的全部镜像为一个 tar
+docker save $(docker compose -f docker-compose.prod.yml --env-file .env.prod images -q | sort -u) -o yuxi_images.tar
+# 3) 把 yuxi_images.tar 和项目文件夹一起拷到服务器
+
+# === 在服务器（项目根目录）===
+docker load -i yuxi_images.tar
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d   # 注意：离线就别加 --build 了，镜像已就绪</code></pre>
+<p class="note">离线时 <code>up</code> <strong>不要带 <code>--build</code></strong>，否则它会尝试重新构建并报网络错误。镜像已经 <code>load</code> 进来了，直接 <code>up -d</code> 即可。 注：仓库自带的 <code>scripts/save_docker_images.sh</code> 只导出基础镜像列表（不含本项目自定义镜像），上面用 <code>compose images -q</code> 的方式更全，推荐用上面这条。</p>
+</body></html>
