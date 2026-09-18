@@ -151,3 +151,52 @@ bash scripts/deploy_prod.sh        # 内部依次执行：停容器 → git pull
 | 对话报"未找到模型" | 模型未在后台「模型供应商」配置或未启用，见第七节 |
 | 想降低资源占用 | 设 `LITE_MODE=true` 可跳过知识库/评测/图谱路由，但会牺牲相应功能 |
 | 容器之间访问异常 | 确认 `NO_PROXY` 包含内部服务名；服务器若设了全局代理需放行 |
+
+## 十、无 GPU 机器 / 本机部署
+
+**结论：没有 GPU 完全可以跑，功能不受影响。**
+
+- 默认 OCR 引擎是 **`rapid_ocr`**（ONNX Runtime，纯 CPU 推理），不需要 GPU。
+- 只有 **PaddleX 本地 OCR** 需要 NVIDIA 显卡，且它带 `profiles: [all]`，**默认不启动**。部署时不要加 `--profile all` 就不会碰到它。
+- MinerU 走云端 API（`MINERU_API_URI`），也不吃本地算力，填 Key 即可用。
+- 真正的算力消耗在 LLM / Embedding，那本来就是调用外部 API，不在本机/服务器上算。
+
+### 本机部署步骤
+
+Windows（PowerShell）：
+
+```powershell
+cd D:\你的路径\yuxi
+.\scripts\init.ps1                 # 生成 .env 并拉取全部镜像（耗时较长）
+docker compose up -d --build       # 开发模式，带热重载
+```
+
+Linux / macOS：
+
+```bash
+./scripts/init.sh
+docker compose up --build
+```
+
+开发模式访问地址（与生产不同）：
+
+| 地址 | 服务 |
+| --- | --- |
+| `http://localhost:5173` | 前台（Web） |
+| `http://localhost:5050` | 后端 API |
+| `http://localhost:9003` | MinIO 控制台 |
+| `http://localhost:7475` | Neo4j 浏览器 |
+
+后台管理同样是 `/back/login`。
+
+### 资源要求（本机同样适用）
+
+- **内存 16 GB 起**：Milvus 单机版官方建议 ≥8 GB，机器内存不足会直接 OOM 或 Milvus 反复重启。
+- **磁盘 60 GB 以上**：镜像体积大（Milvus、Neo4j、以及含 torch 的 API 镜像，外加 sandbox 镜像）。
+- **不要用 `--profile all`**：会去拉需要 GPU 的 PaddleX，无显卡机器上必然失败。
+
+### Windows 特别注意
+
+Docker Desktop 默认把镜像与容器数据放在 **C 盘**（WSL2 发行版内）。若 C 盘剩余空间不足（例如只剩几 GB），即使 D 盘很空也会失败。解决方式：Docker Desktop → Settings → Resources → 把镜像存储位置改到 D 盘，或迁移 WSL2 发行版到 D 盘。
+
+> 参考：当前这台机器 C 盘仅剩 1.66 GB，Docker 守护进程也未启动，因此无法在本机验证启动流程——上述结论来自对 compose 配置、初始化脚本与 OCR 默认引擎（`rapid_ocr`）的实读，不是实测。
