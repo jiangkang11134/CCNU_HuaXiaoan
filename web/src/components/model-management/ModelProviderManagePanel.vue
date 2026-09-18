@@ -60,6 +60,7 @@ const providerForm = reactive({
   is_enabled: true,
   headers_text: '{}',
   extra_text: '{}'
+  ,accounts_text: '[]'
 })
 
 // Model form state
@@ -284,6 +285,15 @@ const parseJsonObject = (text, label) => {
     throw new Error(`${label} 格式不正确`)
   }
 }
+const parseJsonArray = (text, label) => {
+  try {
+    const parsed = JSON.parse(text || '[]')
+    if (!Array.isArray(parsed)) throw new Error()
+    return parsed
+  } catch {
+    throw new Error(`${label} 格式不正确`)
+  }
+}
 
 const formatJsonText = (value) => JSON.stringify(value || {}, null, 2)
 const loadProviders = async () => {
@@ -335,6 +345,7 @@ const openCreateProviderModal = () => {
     is_enabled: true,
     headers_text: '{}',
     extra_text: '{}'
+    ,accounts_text: '[]'
   })
   showProviderModal.value = true
 }
@@ -358,6 +369,7 @@ const openEditProviderModal = (provider) => {
     is_enabled: provider.is_enabled !== false,
     headers_text: formatJsonText(provider.headers_json),
     extra_text: formatJsonText(provider.extra_json)
+    ,accounts_text: JSON.stringify(provider.accounts_json || [], null, 2)
   })
   showProviderModal.value = true
 }
@@ -374,11 +386,12 @@ const buildProviderPayload = () => ({
   embedding_models_endpoint: providerForm.embedding_models_endpoint || null,
   rerank_models_endpoint: providerForm.rerank_models_endpoint || null,
   api_key_env: providerForm.api_key_env || null,
-  api_key: providerForm.api_key || null,
+  ...(providerForm.api_key ? { api_key: providerForm.api_key } : {}),
   capabilities: providerForm.capabilities,
   is_enabled: providerForm.is_enabled,
   headers_json: parseJsonObject(providerForm.headers_text, '请求头'),
-  extra_json: parseJsonObject(providerForm.extra_text, '扩展配置')
+  extra_json: parseJsonObject(providerForm.extra_text, '扩展配置'),
+  accounts_json: parseJsonArray(providerForm.accounts_text, '账号池')
 })
 
 const createProvider = async () => {
@@ -898,6 +911,15 @@ defineExpose({
             <label class="form-label full-width">
               <span>扩展配置 JSON</span>
               <a-textarea v-model:value="providerForm.extra_text" :rows="4" placeholder="{}" />
+            </label>
+            <label class="form-label full-width">
+              <span>多账号负载池 JSON</span>
+              <a-textarea
+                v-model:value="providerForm.accounts_text"
+                :rows="5"
+                placeholder='[{"id":"primary","api_key":"...","base_url":"","weight":1,"enabled":true}]'
+              />
+              <small class="field-hint">按权重随机选择账号；API Key 只写入服务端，不会回显。</small>
             </label>
           </a-collapse-panel>
         </a-collapse>

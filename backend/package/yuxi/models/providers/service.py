@@ -27,6 +27,26 @@ _PROVIDER_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,99}$")
 def _normalize_list(value: Any) -> list:
     return value if isinstance(value, list) else []
 
+def _normalize_accounts(value: Any) -> list[dict[str, Any]]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise ValueError("accounts_json 必须是对象列表")
+    result = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"账号池第 {index + 1} 项必须是对象")
+        account = dict(item)
+        account["id"] = str(account.get("id") or f"account-{index + 1}")[:80]
+        account["base_url"] = str(account.get("base_url") or "").strip()
+        account["api_key"] = str(account.get("api_key") or "").strip()
+        account["weight"] = max(1, min(int(account.get("weight", 1)), 100))
+        account["enabled"] = bool(account.get("enabled", True))
+        if not account["api_key"] and not account["base_url"]:
+            raise ValueError(f"账号池 {account['id']} 至少需要 api_key 或 base_url")
+        result.append(account)
+    return result
+
 
 def _normalize_dict(value: Any) -> dict:
     return value if isinstance(value, dict) else {}
@@ -106,6 +126,7 @@ _FIELD_NORMALIZERS = {
     "extra_json": _normalize_dict,
     "is_enabled": bool,
     "is_builtin": bool,
+    "accounts_json": _normalize_accounts,
 }
 
 
@@ -283,6 +304,17 @@ async def update_provider_config(
     provider = await get_model_provider(db, provider_id)
     if provider is None:
         return None
+    data = dict(data)
+    if "accounts_json" in data:
+        existing_accounts = {str(item.get("id")): item for item in (provider.accounts_json or []) if isinstance(item, dict)}
+        merged_accounts = []
+        for item in data.get("accounts_json") or []:
+            if isinstance(item, dict) and not item.get("api_key") and item.get("api_key_configured"):
+                previous = existing_accounts.get(str(item.get("id")))
+                if previous and previous.get("api_key"):
+                    item = {**item, "api_key": previous["api_key"]}
+            merged_accounts.append(item)
+        data["accounts_json"] = merged_accounts
     payload = _normalize_payload(data, partial=True)
     # partial 更新时仅传 enabled_models，结合 DB 中现有 capabilities 校验
     if "enabled_models" in payload and "capabilities" not in payload:

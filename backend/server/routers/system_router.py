@@ -6,6 +6,7 @@ import aiofiles
 import yaml
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import config, get_version
 from yuxi.storage.postgres.models_business import SystemKV, User
@@ -27,6 +28,19 @@ from server.utils.frontend_portal_policy import (
 )
 
 system = APIRouter(prefix="/system", tags=["system"])
+MODEL_ROUTING_KEY = "model_routing"
+
+class ModelRoutingPayload(BaseModel):
+    chat_model_spec: str | None = Field(None, max_length=200)
+    intent_model_spec: str | None = Field(None, max_length=200)
+    intent_enabled: bool = True
+    # 记忆抽取模型：留空时回落"本会话正在用的回答模型"，而不是系统默认——
+    # 抽取要读中文问答，跟随会话模型的成功率比硬编码默认模型高。
+    memory_model_spec: str | None = Field(None, max_length=200)
+    # 抽取节流（秒）：0 表示每轮都抽；大于 0 时攒批抽取，**被跳过的轮次不会丢**
+    # （游标不推进，下一次连批补上）。
+    memory_extract_min_interval: int = Field(0, ge=0, le=86400)
+    strategy: str = Field("weighted", pattern="^(weighted|round_robin)$")
 SENSITIVE_CONFIG_FIELDS = frozenset(
     {
         "tavily_api_key",
@@ -166,6 +180,25 @@ async def update_config_batch(items: dict = Body(...), current_user: User = Depe
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return _dump_public_config()
+
+@system.get("/model-routing")
+async def get_model_routing(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_required_user)):
+    row = await db.get(SystemKV, MODEL_ROUTING_KEY)
+    return {"success": True, "data": row.value if row and isinstance(row.value, dict) else {"intent_enabled": True, "strategy": "weighted"}}
+
+@system.put("/model-routing")
+async def update_model_routing(payload: ModelRoutingPayload, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    data = payload.model_dump()
+    for key in ("chat_model_spec", "intent_model_spec", "memory_model_spec"):
+        if data.get(key) == "": data[key] = None
+    row = await db.get(SystemKV, MODEL_ROUTING_KEY)
+    if row is None:
+        row = SystemKV(key=MODEL_ROUTING_KEY, value=data, description="回答模型与前置意图路由模型配置")
+        db.add(row)
+    else:
+        row.value = data
+    await db.commit()
+    return {"success": True, "data": data}
 
 
 @system.get("/frontend-chat-config")

@@ -194,6 +194,11 @@ class MilvusGraphService:
         kb = await self._get_milvus_kb(kb_id)
         config = self._get_locked_config(kb.additional_params or {})
         extractor_options = self._runtime_extractor_options(config)
+        # 文件级域覆盖知识库级域：同一个知识库里可以同时放化学品手册与管理办法，
+        # 各自按自己的本体抽取，而跨族连边仍落在同一张图上——这正是不按域分库的理由。
+        domain_by_file = await self._load_domain_by_file(kb_id)
+        if domain_by_file:
+            extractor_options["domain_by_file"] = domain_by_file
         extractor = GraphExtractorFactory.create(config["extractor_type"], extractor_options)
         worker_count = self._get_worker_count(config)
         total_pending = await self.chunk_repo.count_graph_pending_by_kb_id(kb_id)
@@ -201,6 +206,8 @@ class MilvusGraphService:
         failed = 0
         failed_chunk_ids: set[str] = set()
         write_lock = asyncio.Lock()
+        # P3（设计文档 §4.4）：收集"本次抽取"的实体名，供文档重摄入触发复核使用
+        seen_entity_names: set[str] = set()
 
         while True:
             if context is not None:
@@ -252,6 +259,10 @@ class MilvusGraphService:
                                 chunk.chunk_id,
                                 ent_ids=[entity["entity_id"] for entity in entities],
                             )
+                            for entity in entities:
+                                name = str(entity.get("name") or "").strip()
+                                if name:
+                                    seen_entity_names.add(name)
                         processed += 1
                     except Exception as exc:
                         logger.error(f"Chunk 图谱构建失败 chunk_id={chunk.chunk_id}: {exc}")
@@ -275,6 +286,13 @@ class MilvusGraphService:
                 raise
 
         remaining = await self.chunk_repo.count_graph_pending_by_kb_id(kb_id)
+        if processed and seen_entity_names:
+            # P3 文档重摄入触发复核：本次抽取实体与已批准修正的 entity_hints 有重叠 →
+            # 标记 needs_review 提示管理员复核（只标记，不撤下注入）。失败不影响图谱构建。
+            # 延迟导入：knowledge 层不依赖 memory 层（避免 import 期耦合）。
+            from yuxi.self_evolution.review_hook import mark_corrections_for_reingested_entities
+
+            await mark_corrections_for_reingested_entities(kb_id, seen_entity_names)
         return {"kb_id": kb_id, "success": processed, "failed": failed, "remaining": remaining}
 
     @staticmethod
@@ -293,23 +311,67 @@ class MilvusGraphService:
         options.pop("prompt", None)
         return options
 
+    async def _load_domain_by_file(self, kb_id: str) -> dict[str, str]:
+        """该知识库下"文件 → 抽取域"的覆盖表；只含确实配了域的文件。
+
+        读失败不阻断建图——域是质量优化项，不是建图的前置条件。但它会**退回
+        知识库级域**（通常是通用抽取），所以这里必须把异常打出来：
+        否则"文件级域其实没生效"这件事只能靠比对图谱质量才猜得出来。
+        """
+        try:
+            from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
+
+            return await KnowledgeFileRepository().get_domain_by_file_ids(kb_id=kb_id)
+        except Exception:
+            logger.exception("读取文件级抽取域失败，本次回退到知识库级域 kb_id={}", kb_id)
+            return {}
+
     async def _get_chunk_extraction_result(self, kb_id: str, chunk, extractor: GraphExtractor) -> dict[str, Any]:
         extractor_type = extractor.extractor_type
+        # 缓存结果**不再过白名单**：它是上一次抽取的产物，可能出自另一套本体。
+        # 在这里重新过滤等于把它悄悄改小，而 chunk 已落库、图也已建好，
+        # 会造成"读到的和库里存的不一致"。收敛存量数据应走显式重摄入。
         if chunk.extraction_result:
             return normalize_extraction_result(chunk.extraction_result, extractor_type)
 
-        extraction_result = await extractor.extract(
-            chunk.content,
-            chunk_metadata={
-                "kb_id": kb_id,
-                "chunk_id": chunk.chunk_id,
-                "file_id": chunk.file_id,
-                "chunk_index": chunk.chunk_index,
-            },
+        chunk_metadata = {
+            "kb_id": kb_id,
+            "chunk_id": chunk.chunk_id,
+            "file_id": chunk.file_id,
+            "chunk_index": chunk.chunk_index,
+        }
+        extraction_result = await extractor.extract(chunk.content, chunk_metadata=chunk_metadata)
+        normalized_result = normalize_extraction_result(
+            extraction_result,
+            extractor_type,
+            domain=extractor.resolved_domain(chunk_metadata),
         )
-        normalized_result = normalize_extraction_result(extraction_result, extractor_type)
+        self._report_ontology_drops(chunk, normalized_result)
         await self.chunk_repo.update_extraction_result(chunk.chunk_id, normalized_result)
         return normalized_result
+
+    @staticmethod
+    def _report_ontology_drops(chunk, normalized_result: dict[str, Any]) -> None:
+        """本体拦掉的东西必须留痕。
+
+        白名单过滤本质上是**静默的数据丢弃**。没有这行日志，"模型一直在编标签、
+        本体一直在拦"这件事只能等图谱越用越乱才被发现，而那时已无从追溯是哪些块。
+        """
+        verdict = (normalized_result.get("metadata") or {}).get("ontology") or {}
+        if not verdict:
+            return
+        dropped_entities = verdict.get("dropped_entities") or 0
+        dropped_relations = verdict.get("dropped_relations") or 0
+        if not dropped_entities and not dropped_relations:
+            return
+        logger.warning(
+            "本体过滤 chunk_id={} domain={}：丢弃实体 {} 个、关系 {} 条，越界 label=[{}]",
+            chunk.chunk_id,
+            verdict.get("domain"),
+            dropped_entities,
+            dropped_relations,
+            "、".join(verdict.get("unknown_labels") or []),
+        )
 
     def write_chunk_graph(
         self,

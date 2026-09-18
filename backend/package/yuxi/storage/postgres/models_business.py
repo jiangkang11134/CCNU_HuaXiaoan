@@ -17,13 +17,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from yuxi.utils.datetime_utils import format_utc_datetime, utc_now_naive
+from yuxi.utils.datetime_utils import format_naive_utc_datetime, utc_now_naive
 
 Base = declarative_base()
 
 MAX_LOGIN_FAILED_ATTEMPTS = 5
 LOGIN_LOCK_DURATION_SECONDS = 300
 AGENT_RUN_TERMINAL_STATUSES = ("completed", "failed", "cancelled", "interrupted")
+
+def _public_account_config(accounts: Any) -> list[dict[str, Any]]:
+    result = []
+    for item in accounts or []:
+        if not isinstance(item, dict):
+            continue
+        safe = {k: v for k, v in item.items() if k != "api_key"}
+        safe["api_key_configured"] = bool(item.get("api_key"))
+        result.append(safe)
+    return result
 
 
 class Department(Base):
@@ -44,7 +54,7 @@ class Department(Base):
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "created_at": format_utc_datetime(self.created_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
         }
 
 
@@ -98,13 +108,13 @@ class User(Base):
             "business_role": self.business_role,
             "is_builtin": bool(self.is_builtin),
             "department_id": self.department_id,
-            "created_at": format_utc_datetime(self.created_at),
-            "last_login": format_utc_datetime(self.last_login),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "last_login": format_naive_utc_datetime(self.last_login),
             "login_failed_count": self.login_failed_count,
-            "last_failed_login": format_utc_datetime(self.last_failed_login),
-            "login_locked_until": format_utc_datetime(self.login_locked_until),
+            "last_failed_login": format_naive_utc_datetime(self.last_failed_login),
+            "login_locked_until": format_naive_utc_datetime(self.login_locked_until),
             "is_deleted": self.is_deleted,
-            "deleted_at": format_utc_datetime(self.deleted_at),
+            "deleted_at": format_naive_utc_datetime(self.deleted_at),
         }
         if include_password:
             result["password_hash"] = self.password_hash
@@ -154,8 +164,8 @@ class AgentEnv(Base):
         return {
             "uid": self.uid,
             "env": self.env or {},
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -166,7 +176,13 @@ class UserConfig(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     uid = Column(String, ForeignKey("users.uid"), nullable=False, unique=True, index=True)
-    enable_memory = Column(Boolean, nullable=False, default=False)
+    enable_memory = Column(Boolean, nullable=False, default=True)
+    # 个人资料（用户可编辑部分）。学工号=users.uid、身份=users.business_role，
+    # 都来自注册信息且不可改，因此**不落在这张表**——避免同一事实有两处可写来源。
+    full_name = Column(String(64), nullable=True)          # 姓名
+    gender = Column(String(16), nullable=True)             # 性别
+    major = Column(String(64), nullable=True)              # 专业
+    response_style = Column(String(16), nullable=False, default="normal")  # 回答风格
     created_at = Column(DateTime, default=utc_now_naive)
     updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
@@ -176,9 +192,153 @@ class UserConfig(Base):
         return {
             "uid": self.uid,
             "enable_memory": bool(self.enable_memory),
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "full_name": self.full_name,
+            "gender": self.gender,
+            "major": self.major,
+            "response_style": self.response_style,
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
+
+
+class SessionFact(Base):
+    """当前会话事实；仅在 thread 范围内生效。"""
+    __tablename__ = "session_facts"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(String, nullable=False, index=True)
+    thread_id = Column(String, nullable=False, index=True)
+    fact_key = Column(String(128), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(24), nullable=False, default="active", index=True)
+    source_request_id = Column(String(128), nullable=True, index=True)
+    scope = Column(String(64), nullable=False, default="thread")
+    tags = Column(JSON, nullable=False, default=list)
+    expires_at = Column(DateTime, nullable=True, index=True)
+    supersedes_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    __table_args__ = (Index("ix_session_facts_thread_status", "thread_id", "status"),)
+
+
+class UserMemoryFact(Base):
+    """跨会话长期记忆，必须经过 confirmed 状态才可注入。"""
+    __tablename__ = "user_memory_facts"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(String, nullable=False, index=True)
+    fact_key = Column(String(128), nullable=False)
+    content = Column(Text, nullable=False)
+    status = Column(String(32), nullable=False, default="candidate", index=True)
+    confidence = Column(Float, nullable=False, default=0.0)
+    source_request_id = Column(String(128), nullable=True, index=True)
+    scope = Column(String(64), nullable=False, default="user")
+    tags = Column(JSON, nullable=False, default=list)
+    graph_query_role = Column(String(32), nullable=False, default="personalize")
+    entity_hints = Column(JSON, nullable=False, default=list)
+    intent_hints = Column(JSON, nullable=False, default=list)
+    domain_scope = Column(String(64), nullable=False, default="general")
+    expires_at = Column(DateTime, nullable=True, index=True)
+    supersedes_id = Column(Integer, nullable=True, index=True)
+    confirmed_at = Column(DateTime, nullable=True)
+    confirmed_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    __table_args__ = (Index("ix_user_memory_uid_status", "uid", "status"), Index("uq_user_memory_active_key", "uid", "fact_key", unique=True, postgresql_where=status.in_(["candidate", "pending_confirmation", "confirmed"])),)
+
+
+class MemoryExtractCursor(Base):
+    """记忆抽取的消费游标：以 agent_runs 为基准，一个会话线程一行。
+
+    抽取从"跟随回答流"改为"后台独立调用"之后，必须有东西回答两个问题：
+    ① 这次该抽哪几轮 —— 游标之后的 run；② 重跑怎么不重复抽 —— 同一游标。
+    排序键是 ``(created_at, id)``：``AgentRun.id`` 是 UUID 本身不可排序，
+    只用于同秒并列时的 tie-break。
+
+    ``last_extracted_at`` 另作节流用（两次抽取的最小间隔），与游标位置是两件事：
+    节流只是"这次先不抽"，**不能**推进游标，否则被跳过的轮次永远抽不到。
+    """
+    __tablename__ = "memory_extract_cursors"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(String, nullable=False, index=True)
+    thread_id = Column(String, nullable=False, unique=True, index=True)
+    last_run_id = Column(String(64), nullable=True)
+    last_run_created_at = Column(DateTime, nullable=True)
+    last_extracted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class CorrectionTicket(Base):
+    """用户纠错工单，必须经过人工审核后才能影响知识库。"""
+    __tablename__ = "correction_tickets"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uid = Column(String, nullable=False, index=True)
+    thread_id = Column(String, nullable=True, index=True)
+    source_request_id = Column(String(128), nullable=True, unique=True)
+    original_content = Column(Text, nullable=False)
+    proposed_content = Column(Text, nullable=False)
+    reviewed_content = Column(Text, nullable=True)
+    status = Column(String(24), nullable=False, default="pending", index=True)
+    reviewer_uid = Column(String, nullable=True)
+    review_note = Column(Text, nullable=True)
+    target_type = Column(String(32), nullable=False, default="answer")
+    target_id = Column(String(128), nullable=True)
+    kb_id = Column(String(80), nullable=True, index=True)
+    risk_level = Column(String(16), nullable=False, default="medium")
+    # M1 作用域分层：只有知识性偏差允许进全局口径，偏好只对本人生效。
+    # scope 默认 kb_truth 是为了让存量手工工单保持原语义（本来就是全局的）；
+    # 新建工单由 self_evolution/scope.classify_scope 判定，偏好特征命中即降为 user_pref。
+    scope = Column(String(16), nullable=False, default="kb_truth", index=True)
+    # 谁定的作用域：rule（规则自动判定）/ admin（审核时改定）/ 空 = 未命中特征待确认
+    scope_source = Column(String(16), nullable=True)
+    dept_id = Column(Integer, nullable=True, index=True)  # dept_rule 的归属部门
+    # 反馈记忆库 v2 元数据（P1）：全部可空，空值 = 对应硬门槛自动降级。
+    entity_hints = Column(JSON, nullable=True, default=list)      # 适用实体名，审核时图谱词面链接自动生成
+    relation_hints = Column(JSON, nullable=True, default=list)    # 适用关系类型（P2+ 使用）
+    intent_tags = Column(JSON, nullable=True, default=list)       # 意图标签，审核时 LLM 分类尽力生成
+    confidence = Column(Float, nullable=True, default=0.8)        # 管理员终裁时设定，默认 0.8
+    expires_at = Column(DateTime, nullable=True)                  # 默认空=永不过期；仅过渡性规则手填
+    # P2：终裁内容稠密向量 {"spec": 模型spec, "vector": [float,...]}；空 = 检索时稀疏路降级
+    embedding = Column(JSON, nullable=True)
+    # P3：文档重摄入触发复核（§4.4）。源文档实体集与 entity_hints 重叠时置位，
+    # 仅提示管理员复核，不影响注入生效（只有管理员明确撤回才停止注入）。
+    needs_review = Column(Boolean, nullable=False, default=False, index=True)
+    needs_review_reason = Column(String(200), nullable=True)
+    needs_review_at = Column(DateTime, nullable=True)
+    # P4：图谱写回。一 ticket 一合成文件（file_id 即撤回粒度），改写文本保留原貌
+    # 以便撤回后按票重新投影；实体/三元组 id 不落库——撤回时由 file 级级联清理负责。
+    rewrite_text = Column(Text, nullable=True)
+    graph_written = Column(Boolean, nullable=False, default=False, index=True)
+    graph_file_id = Column(String(64), nullable=True)
+    graph_chunk_ids = Column(JSON, nullable=True)
+    graph_written_at = Column(DateTime, nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+
+
+class MemoryEvent(Base):
+    """生命周期审计事件，用于审计、解释和回滚（append-only）。
+
+    由**两个互不相关的模块**共用：记忆模块（target_type=session_fact / user_memory）
+    与自进化模块（target_type=correction / correction_retrieval）。
+    表名 ``memory_events`` 是历史遗留（拆分前纠错工单也住在 ``yuxi.memory`` 里）；
+    写入器唯一实现见 :mod:`yuxi.storage.postgres.event_log`。
+    """
+    __tablename__ = "memory_events"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), nullable=False, unique=True, index=True)
+    uid = Column(String, nullable=False, index=True)
+    target_type = Column(String(32), nullable=False, index=True)
+    target_id = Column(Integer, nullable=False, index=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    before_status = Column(String(32), nullable=True)
+    after_status = Column(String(32), nullable=True)
+    payload = Column(JSON, nullable=False, default=dict)
+    actor_type = Column(String(32), nullable=False, default="system")
+    actor_id = Column(String(64), nullable=True)
+    request_id = Column(String(128), nullable=True, index=True)
+    created_at = Column(DateTime, default=utc_now_naive, index=True)
 
 
 class SystemKV(Base):
@@ -198,8 +358,8 @@ class SystemKV(Base):
             "key": self.key,
             "value": self.value or {},
             "description": self.description,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -246,8 +406,8 @@ class Agent(Base):
             "is_subagent": bool(self.is_subagent),
             "created_by": self.created_by,
             "updated_by": self.updated_by,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -293,8 +453,8 @@ class Skill(Base):
             "enabled": bool(self.enabled),
             "created_by": self.created_by,
             "updated_by": self.updated_by,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -331,8 +491,8 @@ class Conversation(Base):
             "title": self.title,
             "status": self.status,
             "is_pinned": bool(self.is_pinned),
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
             "metadata": metadata,
         }
 
@@ -370,8 +530,8 @@ class SubagentThread(Base):
             "child_thread_id": self.child_thread_id,
             "subagent_slug": self.subagent_slug,
             "created_by_run_id": self.created_by_run_id,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -407,7 +567,7 @@ class Message(Base):
             "role": self.role,
             "content": self.content,
             "message_type": self.message_type,
-            "created_at": format_utc_datetime(self.created_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
             "token_count": self.token_count,
             "metadata": self.extra_metadata or {},
             "image_content": self.image_content,
@@ -452,7 +612,7 @@ class ToolCall(Base):
             "tool_output": self.tool_output,
             "status": self.status,
             "error_message": self.error_message,
-            "created_at": format_utc_datetime(self.created_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
         }
 
 
@@ -483,8 +643,8 @@ class ConversationStats(Base):
             "total_tokens": self.total_tokens,
             "model_used": self.model_used,
             "user_feedback": self.user_feedback or {},
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -510,7 +670,7 @@ class OperationLog(Base):
             "operation": self.operation,
             "details": self.details,
             "ip_address": self.ip_address,
-            "timestamp": format_utc_datetime(self.timestamp),
+            "timestamp": format_naive_utc_datetime(self.timestamp),
         }
 
 
@@ -526,6 +686,16 @@ class MessageFeedback(Base):
     uid = Column(String(64), nullable=False, index=True, comment="UID who provided feedback")
     rating = Column(String(10), nullable=False, comment="Feedback rating: like or dislike")
     reason = Column(Text, nullable=True, comment="Optional reason for dislike feedback")
+    reporter_role = Column(String(32), nullable=False, default="student", index=True)
+    priority = Column(Integer, nullable=False, default=50, index=True)
+    processing_status = Column(String(32), nullable=False, default="backlog", index=True)
+    processing_note = Column(Text, nullable=True)
+    # 关联的纠错工单：仅教师/管理员的反馈会自动建单；学生的反馈停在此表，
+    # 由管理员在反馈仪表盘判断是否转工单。有值即表示已进入 P1–P4 自进化管道。
+    ticket_id = Column(Integer, nullable=True, index=True, comment="Linked correction ticket id")
+    scheduled_at = Column(DateTime, nullable=True, index=True)
+    processed_at = Column(DateTime, nullable=True)
+    processed_by = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=utc_now_naive, comment="Feedback creation time")
 
     # Relationships
@@ -538,7 +708,15 @@ class MessageFeedback(Base):
             "uid": self.uid,
             "rating": self.rating,
             "reason": self.reason,
-            "created_at": format_utc_datetime(self.created_at),
+            "reporter_role": self.reporter_role,
+            "priority": self.priority,
+            "processing_status": self.processing_status,
+            "processing_note": self.processing_note,
+            "ticket_id": self.ticket_id,
+            "scheduled_at": format_naive_utc_datetime(self.scheduled_at),
+            "processed_at": format_naive_utc_datetime(self.processed_at),
+            "processed_by": self.processed_by,
+            "created_at": format_naive_utc_datetime(self.created_at),
         }
 
 
@@ -598,8 +776,8 @@ class MCPServer(Base):
             "disabled_tools": self.disabled_tools or [],
             "created_by": self.created_by,
             "updated_by": self.updated_by,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
     def to_mcp_config(self) -> dict[str, Any]:
@@ -670,6 +848,7 @@ class ModelProvider(Base):
     enabled_models = Column(JSON, nullable=False, default=list, comment="已启用模型配置对象")
     headers_json = Column(JSON, nullable=True, comment="额外请求头")
     extra_json = Column(JSON, nullable=True, comment="扩展配置")
+    accounts_json = Column(JSON, nullable=False, default=list, comment="多账号端点池：api_key/base_url/weight/enabled")
 
     is_enabled = Column(Boolean, nullable=False, default=True, index=True, comment="供应商是否启用")
     is_builtin = Column(Boolean, nullable=False, default=False, comment="是否内置")
@@ -693,17 +872,18 @@ class ModelProvider(Base):
             "embedding_models_endpoint": self.embedding_models_endpoint,
             "rerank_models_endpoint": self.rerank_models_endpoint,
             "api_key_env": self.api_key_env,
-            "api_key": self.api_key,
+            "api_key_configured": bool(self.api_key),
             "capabilities": self.capabilities or [],
             "enabled_models": self.enabled_models or [],
             "headers_json": self.headers_json or {},
             "extra_json": self.extra_json or {},
+            "accounts_json": _public_account_config(self.accounts_json),
             "is_enabled": bool(self.is_enabled),
             "is_builtin": bool(self.is_builtin),
             "created_by": self.created_by,
             "updated_by": self.updated_by,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 
@@ -733,10 +913,10 @@ class TaskRecord(Base):
             "status": self.status,
             "progress": self.progress,
             "message": self.message,
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
-            "started_at": format_utc_datetime(self.started_at),
-            "completed_at": format_utc_datetime(self.completed_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
+            "started_at": format_naive_utc_datetime(self.started_at),
+            "completed_at": format_naive_utc_datetime(self.completed_at),
             "payload": self.payload or {},
             "result": self.result,
             "error": self.error,
@@ -781,11 +961,11 @@ class APIKey(Base):
             "name": self.name,
             "user_id": self.user_id,
             "department_id": self.department_id,
-            "expires_at": format_utc_datetime(self.expires_at),
+            "expires_at": format_naive_utc_datetime(self.expires_at),
             "is_enabled": bool(self.is_enabled),
-            "last_used_at": format_utc_datetime(self.last_used_at),
+            "last_used_at": format_naive_utc_datetime(self.last_used_at),
             "created_by": self.created_by,
-            "created_at": format_utc_datetime(self.created_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
         }
 
     def is_valid(self) -> bool:
@@ -827,10 +1007,10 @@ class CLIAuthSession(Base):
             "key_name": self.key_name,
             "approved_user_id": self.approved_user_id,
             "api_key_id": self.api_key_id,
-            "created_at": format_utc_datetime(self.created_at),
-            "expires_at": format_utc_datetime(self.expires_at),
-            "approved_at": format_utc_datetime(self.approved_at),
-            "consumed_at": format_utc_datetime(self.consumed_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "expires_at": format_naive_utc_datetime(self.expires_at),
+            "approved_at": format_naive_utc_datetime(self.approved_at),
+            "consumed_at": format_naive_utc_datetime(self.consumed_at),
         }
 
 
@@ -897,10 +1077,10 @@ class AgentRun(Base):
             "input_payload": self.input_payload or {},
             "error_type": self.error_type,
             "error_message": self.error_message,
-            "started_at": format_utc_datetime(self.started_at),
-            "finished_at": format_utc_datetime(self.finished_at),
-            "created_at": format_utc_datetime(self.created_at),
-            "updated_at": format_utc_datetime(self.updated_at),
+            "started_at": format_naive_utc_datetime(self.started_at),
+            "finished_at": format_naive_utc_datetime(self.finished_at),
+            "created_at": format_naive_utc_datetime(self.created_at),
+            "updated_at": format_naive_utc_datetime(self.updated_at),
         }
 
 

@@ -39,8 +39,14 @@ def load_chat_model(fully_specified_name: str | None, **kwargs) -> BaseChatModel
     if info.model_type != "chat":
         raise ValueError(f"Model {fully_specified_name} is not a chat model (type={info.model_type})")
 
-    api_key = info.api_key
-    base_url = get_docker_safe_url(info.base_url)
+    # 多账号按权重随机选择，单次模型实例固定端点，避免流式请求中途切换。
+    endpoint = None
+    enabled_accounts = [a for a in info.accounts if a.get("enabled", True) and (a.get("api_key") or a.get("base_url"))]
+    if enabled_accounts:
+        expanded = [a for a in enabled_accounts for _ in range(max(1, int(a.get("weight", 1))))]
+        endpoint = random.choice(expanded)
+    api_key = (endpoint or {}).get("api_key") or info.api_key
+    base_url = get_docker_safe_url((endpoint or {}).get("base_url") or info.base_url)
 
     logger.debug(f"Loading model {fully_specified_name} with provider_type={info.provider_type}")
 

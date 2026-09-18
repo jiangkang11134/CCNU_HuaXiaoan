@@ -14,6 +14,12 @@ from starlette.responses import StreamingResponse
 from yuxi import config, knowledge_base
 from yuxi.knowledge.chunking.ragflow_like.presets import get_chunk_preset_options
 from yuxi.knowledge.factory import KnowledgeBaseFactory
+from yuxi.knowledge.graphs.extractors.domains import (
+    DOMAIN_TITLES,
+    PENDING_DOMAINS,
+    is_known_domain,
+    valid_domains,
+)
 from yuxi.knowledge.graphs.milvus_graph_service import GRAPH_TASK_TYPE, MilvusGraphService
 from yuxi.knowledge.parser import SUPPORTED_FILE_EXTENSIONS, Parser, is_supported_file_extension
 from yuxi.knowledge.utils import calculate_content_hash, is_minio_url, parse_minio_url
@@ -32,6 +38,7 @@ from yuxi.knowledge.utils.sample_question_utils import (
 )
 from yuxi.knowledge.utils.url_fetcher import fetch_url_content
 from yuxi.models.providers.cache import model_cache
+from yuxi.repositories.knowledge_file_repository import KnowledgeFileRepository
 from yuxi.services.task_service import TaskContext, tasker
 from yuxi.storage.minio.client import MinIOClient, StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import User
@@ -606,6 +613,65 @@ async def reset_graph_build(
     except Exception as e:
         logger.error(f"重置图谱构建状态失败 {e}, {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"重置图谱构建状态失败: {e}")
+
+
+@knowledge.get("/databases/{kb_id}/graph-build/document-domain")
+async def get_document_domain(
+    kb_id: str,
+    current_user: User = Depends(get_admin_user),
+):
+    """列出可选的抽取域，以及本库已配置文件级域的文件。
+
+    空值表示该文件**跟随知识库级配置**，不是"没有域"——所以下拉里有它，
+    且排在第一位。未建的域单列出来，让界面能明说"尚未建立"而不是给一个
+    选不动的灰项。
+    """
+    try:
+        domains = await KnowledgeFileRepository().get_domain_by_file_ids(kb_id=kb_id)
+        return {
+            "status": "success",
+            "available": [{"value": "", "title": "跟随知识库配置"}]
+            + [{"value": name, "title": DOMAIN_TITLES[name]} for name in valid_domains()],
+            "pending": PENDING_DOMAINS,
+            "domains": domains,
+        }
+    except Exception as e:
+        logger.error(f"读取文件级抽取域失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"读取文件级抽取域失败: {e}")
+
+
+@knowledge.put("/databases/{kb_id}/graph-build/document-domain")
+async def set_document_domain(
+    kb_id: str,
+    data: dict = Body(...),
+    current_user: User = Depends(get_admin_user),
+):
+    """给一批文件指定图谱抽取域；`doc_domain` 传空或 null 表示跟随知识库级配置。
+
+    文件级域的意义：同一个知识库里可以同时放化学品手册与实验室管理办法，
+    各自按自己的本体抽取，而跨族连边仍落在同一张图上——这是按域分库做不到的。
+
+    域值非法时**整批拒绝**并返回 400，不做部分写入。
+    """
+    file_ids = data.get("file_ids")
+    if not isinstance(file_ids, list) or not file_ids:
+        raise HTTPException(status_code=400, detail="file_ids 必须是非空数组")
+    doc_domain = data.get("doc_domain")
+    if doc_domain is not None and not is_known_domain(doc_domain):
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的抽取域: {doc_domain}；可用值为 " + "、".join(valid_domains()),
+        )
+    try:
+        changed = await KnowledgeFileRepository().set_doc_domain(
+            kb_id=kb_id, file_ids=file_ids, doc_domain=doc_domain
+        )
+        return {"status": "success", "changed": changed, "message": f"已更新 {changed} 个文件的抽取域"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"设置文件级抽取域失败 {e}, {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"设置文件级抽取域失败: {e}")
 
 
 @knowledge.get("/databases/{kb_id}/export")

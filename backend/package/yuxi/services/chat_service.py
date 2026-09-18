@@ -17,13 +17,21 @@ import json
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from langchain.messages import AIMessage, AIMessageChunk
 from langgraph.types import Command
+from sqlalchemy import select
 from yuxi import config as conf
+from yuxi.config.user import DEFAULT_ENABLE_MEMORY
 from yuxi.agents.buildin import agent_manager
 from yuxi.agents.context import build_agent_input_context, normalize_agent_context_config
+from yuxi.memory.service import MemoryService
+from yuxi.memory.tasks import enqueue_turn_memory_extraction
+from yuxi.self_evolution.service import CorrectionService
+from yuxi.services.request_preprocessor import preprocess
+from yuxi.services.intent_classifier import classify_with_api
+from yuxi.storage.postgres.models_business import UserConfig
 from yuxi.agents.state import AgentStatePayload
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.agent_run_repository import AgentRunRepository
@@ -39,8 +47,9 @@ from yuxi.services.langfuse_service import (
     get_trace_info,
 )
 from yuxi.services.subagent_run_service import serialize_subagent_run_state
+from yuxi.services.user_profile import build_profile_context, overridden_fact_keys
 from yuxi.storage.postgres.manager import pg_manager
-from yuxi.storage.postgres.models_business import Agent, User
+from yuxi.storage.postgres.models_business import Agent, Message, User, SystemKV
 from yuxi.utils.guard import ContentGuardConfigurationError, content_guard
 from yuxi.utils.logging_config import logger
 from yuxi.utils.question_utils import (
@@ -88,6 +97,176 @@ def _build_agent_context(agent, input_context: dict):
     context = agent.context_schema()
     context.update(input_context)
     return context
+
+
+class _MemoryInjectionResult(NamedTuple):
+    """记忆与权威修正注入的结果。
+
+    injections: 本次实际注入的修正埋点（P3，设计文档 §4.1），随回答消息落库。
+    memory_enabled: 该用户的长期记忆开关。抽取已搬到后台任务，后者会自行复核同一开关，
+        这里保留它只是为了调用方能观测到本次注入用的是哪个口径。
+    """
+
+    injections: list[dict]
+    memory_enabled: bool
+
+
+async def _last_user_query(db, thread_id: str) -> str:
+    """取该会话最后一条用户消息文本。
+
+    中断续跑（stream_agent_resume）请求本身不带新 query，但权威修正与记忆事实的
+    检索需要原始问题作为输入，因此回查该线程最后一条 user 消息。取不到时返回空
+    字符串，调用方据此跳过注入。
+    """
+    try:
+        conv = await ConversationRepository(db).get_conversation_by_thread_id(thread_id)
+        if not conv:
+            return ""
+        row = (await db.execute(
+            select(Message.content)
+            .where(Message.conversation_id == conv.id, Message.role == "user")
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        return (row or "").strip()
+    except Exception:
+        logger.exception("failed to resolve last user query for resume")
+        return ""
+
+
+MEMORY_OBSERVE_KV = "memory_observe"
+# U1：意图 → 回答口径 的发版外开关
+INTENT_CALIBER_KV = "intent_caliber"
+
+
+async def _resolve_bool_switch(db, key: str, default: bool) -> bool:
+    """SystemKV 里的布尔开关；读不到或格式不对一律回默认值。
+
+    这类开关存在的唯一意义就是"出问题能立刻关掉而不发版"，所以读取失败绝不能抛，
+    也不能把异常变成"关掉"——那会让一次数据库抖动悄悄改掉系统行为。
+    """
+    try:
+        kv = await db.get(SystemKV, key)
+        if kv and isinstance(kv.value, dict):
+            enabled = kv.value.get("enabled")
+            if isinstance(enabled, bool):
+                return enabled
+    except Exception:
+        logger.exception("failed to load SystemKV switch %s", key)
+    return default
+
+
+async def _resolve_memory_observe(db) -> bool:
+    """系统级开关：关闭后不再做记忆抽取（默认开启）。
+
+    抽取已搬到后台独立任务（:mod:`yuxi.memory.extraction`），那里直接读同一个
+    ``memory_observe`` SystemKV，因此这里保留的只是**开关名与读取语义的定义处**：
+    出问题时仍能立刻关掉抽取而不发版，不必等下一次发版。
+    """
+    return await _resolve_bool_switch(db, MEMORY_OBSERVE_KV, True)
+
+
+async def _resolve_intent_caliber(db) -> bool:
+    """系统级开关：关闭后不再按意图注入回答口径（默认开启）。
+
+    口径是一段 prompt 纪律，措辞不当会直接压低回答质量。留着开关才能在发现问题时
+    立刻退回"所有意图共用同一套口径"的旧行为，不必等下一次发版。
+    """
+    return await _resolve_bool_switch(db, INTENT_CALIBER_KV, True)
+
+
+async def _inject_memory_and_corrections(
+    db,
+    *,
+    uid: str,
+    thread_id: str,
+    query: str,
+    kb_ids: list[str] | None,
+    intent: str | None,
+    input_context: dict,
+) -> _MemoryInjectionResult:
+    """把 [当前可用事实]、[个人资料]、[权威修正] 依次追加到 input_context["system_prompt"]。
+
+    顺序是刻意的：事实在前（个人资料的风格说明要能"指上文"），权威修正压在最后
+    （它是结论依据的最高层）。个人资料段由 :func:`yuxi.services.user_profile
+    .build_profile_context` 拼装，其中回答风格遵守
+    「本轮会话事实 > 个人资料 > 长期记忆偏好」的三级顺序。
+
+    主问答链路与中断续跑链路共用，保证续跑不会绕过已审核的权威修正约束。
+    任何异常只记录日志，不阻塞主链路（与既有行为一致）。
+
+    query 为空时修正检索无输入（直接返回空），调用方应保证传入真实问题文本。
+    """
+    memory_enabled = DEFAULT_ENABLE_MEMORY
+    profile_major: str | None = None
+    profile_style: str | None = None
+    business_role: str | None = None
+    dept_id: int | None = None
+
+    # M1：作用域分流需要当前用户与其部门。user_pref 只注入给本人、
+    # dept_rule 只注入给同部门，kb_truth 才全局——取不到就按最严的处理。
+    # 同一行顺带取 business_role：个人资料要用它，且它和 department_id 一样都是
+    # 注册时定死、会话内不会变的值，一次取完可为每轮都要走的热路径省一条查询。
+    try:
+        user_row = (await db.execute(
+            select(User.department_id, User.business_role).where(User.uid == uid))).first()
+        if user_row is not None:
+            dept_id, business_role = user_row[0], user_row[1]
+    except Exception:
+        logger.exception("failed to resolve department for correction scope")
+
+    try:
+        # 无 user_config 行（绝大多数用户从未改过设置）时返回 None，
+        # 此时按系统默认走，不能当成"关闭"——否则默认开启的策略在热路径上失效。
+        # 顺带取个人资料里的专业与回答风格：这是每轮都要走的热路径，
+        # 能为它们少发一条查询就少发一条。
+        cfg_row = (await db.execute(
+            select(UserConfig.enable_memory, UserConfig.major, UserConfig.response_style)
+            .where(UserConfig.uid == uid))).first()
+        if cfg_row is not None:
+            memory_enabled = bool(cfg_row[0])
+            profile_major = cfg_row[1]
+            profile_style = cfg_row[2]
+        # 个人资料覆盖了哪些长期记忆键，必须**在取记忆之前**算好：
+        # 这些键要从 [当前可用事实] 里摘掉，否则同一件事会给模型两个答案。
+        suppressed_fact_keys = overridden_fact_keys(major=profile_major)
+        memory_context = await MemoryService.build_context(
+            db, uid, thread_id, memory_enabled, query,
+            suppressed_fact_keys=suppressed_fact_keys)
+        if memory_context:
+            input_context["system_prompt"] = (
+                f"{input_context.get('system_prompt', '')}\n\n[当前可用事实]\n{memory_context}"
+            )
+    except Exception:
+        logger.exception("failed to build memory context")
+
+    # [个人资料] 必须紧跟在 [当前可用事实] 之后：它的风格优先级说明要写
+    # "若上文 [当前可用事实] 里出现了…以它为准"，排到前面就成了指下文。
+    # [权威修正] 留最后——它是结论依据的最高层，且 prompt 尾部的注意力更足。
+    try:
+        profile_context = build_profile_context(
+            business_role=business_role,
+            major=profile_major,
+            response_style=profile_style,
+        )
+        if profile_context:
+            input_context["system_prompt"] = (
+                f"{input_context.get('system_prompt', '')}\n\n[个人资料]\n{profile_context}"
+            )
+    except Exception:
+        logger.exception("failed to build profile context")
+
+    injections: list[dict] = []
+    try:
+        correction_context, injections = await CorrectionService.build_correction_context_details(
+            db, query, kb_ids=kb_ids or [], intent=intent, uid=uid, dept_id=dept_id)
+        if correction_context:
+            input_context["system_prompt"] = (
+                f"{input_context.get('system_prompt', '')}\n\n[权威修正]\n{correction_context}"
+            )
+    except Exception:
+        logger.exception("failed to build correction context")
+    return _MemoryInjectionResult(injections=injections, memory_enabled=memory_enabled)
 
 
 async def _get_langgraph_messages(agent_instance, config_dict, *, context):
@@ -856,8 +1035,39 @@ async def stream_agent_chat(
         request_id=meta.get("request_id"),
         global_system_prompt=global_system_prompt,
     )
+    preprocess_result = preprocess(query)
+    routing_row = await db.get(SystemKV, "model_routing")
+    routing = routing_row.value if routing_row and isinstance(routing_row.value, dict) else {}
+    if preprocess_result.intent == "graph_rag_query" and routing.get("intent_enabled", True):
+        classified = await classify_with_api(query, routing)
+        if classified and float(classified.get("confidence", 0)) >= 0.7:
+            preprocess_result = type(preprocess_result)(classified["intent"], float(classified["confidence"]))
+    meta["request_intent"] = preprocess_result.intent
+    meta["request_intent_confidence"] = preprocess_result.confidence
+    if preprocess_result.direct_answer is not None:
+        yield make_chunk(preprocess_result.direct_answer, status="complete", meta=meta, fast_path=True)
+        return
+    # 记忆事实与权威修正注入（与中断续跑链路共用同一实现）。
+    # 作用域：仅注入当前对话可访问知识库的修正（kb_id 为空的工单全局生效）。
+    # 意图门槛：降级式——工单 intent_tags 非空且查询意图已知时才参与过滤（v3）。
+    # 埋点（P3）：本次实际注入的修正与双路分数随回答消息落库，供监控与阈值校准（设计文档 §4.1）。
+    injection_result = await _inject_memory_and_corrections(
+        db,
+        uid=uid,
+        thread_id=thread_id,
+        query=query,
+        kb_ids=agent_config.get("knowledges") or [],
+        intent=preprocess_result.intent,
+        input_context=input_context,
+    )
+    correction_injections = injection_result.injections
     _apply_model_override(input_context, meta)
     _apply_subagent_runtime_context(input_context, meta)
+    input_context["request_intent"] = preprocess_result.intent
+    input_context["request_intent_confidence"] = preprocess_result.confidence
+    input_context["intent_caliber"] = await _resolve_intent_caliber(db)
+    if routing.get("chat_model_spec"):
+        input_context["model"] = routing["chat_model_spec"]
     context = _build_agent_context(agent, input_context)
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
@@ -912,6 +1122,10 @@ async def stream_agent_chat(
                     content=query,
                     message_type=message_type,
                     image_content=image_content,
+                    # request_id 必须同时落到**列**上，不能只塞进 extra_metadata：
+                    # assistant 行走的是列，user 行只放 metadata 会让同一轮的两条消息
+                    # 一个能 join、一个 join 不到，按 request_id 复盘会话时凭空少一半。
+                    request_id=meta.get("request_id"),
                     extra_metadata={
                         "raw_message": human_message.model_dump(),
                         "request_id": meta.get("request_id"),
@@ -1006,6 +1220,8 @@ async def stream_agent_chat(
 
         full_msg = _ensure_full_msg(full_msg, accumulated_content)
         trace_info = get_trace_info(langfuse_run)
+        if correction_injections:
+            trace_info["injected_corrections"] = correction_injections
 
         if conf.enable_content_guard and hasattr(full_msg, "content"):
             try:
@@ -1067,7 +1283,18 @@ async def stream_agent_chat(
             yield make_chunk(status="warning", message=f"消息保存失败: {e}", meta=meta)
 
         if interrupted:
+            # 中断轮**刻意不入队**：这一轮的 output 只有半截，抽了会把游标推过去；
+            # 续跑把回答补齐后，同一个 run 就再也抽不到了（游标只前进不后退）。
+            # 留着不消费即可——续跑时会入队，用户直接问下一轮也会连批带它一起处理。
             return
+
+        # 事实与长期记忆由后台任务独立抽取（yuxi.memory.extraction）。
+        # 放在消息落库之后：抽取要按 input/output message 取回原文，落库前入队会白跑一趟。
+        # 入队失败只记日志——记忆晚一轮生效可接受，但绝不能因此毁掉一次已生成的回答。
+        try:
+            await enqueue_turn_memory_extraction(thread_id)
+        except Exception:
+            logger.exception("failed to enqueue memory extraction")
 
         yield make_chunk(status="finished", meta=meta)
 
@@ -1175,6 +1402,29 @@ async def stream_agent_resume(
         global_system_prompt=global_system_prompt,
     )
     _apply_model_override(input_context, meta)
+    # 回答链路不再产出任何协议块：抽取由后台任务独立调用完成（yuxi.memory.extraction），
+    # 续跑与正常回答同一条纪律。口径仍按系统开关生效，不然中断恢复会悄悄松一档。
+    input_context["intent_caliber"] = await _resolve_intent_caliber(db)
+    # 续跑同样要受已审核的权威修正与会话事实约束，否则中断恢复后的回答会绕过权威层。
+    # 续跑请求不带新 query，回查本线程最后一条用户消息作为检索输入。
+    resume_query = await _last_user_query(db, thread_id)
+    memory_enabled = False
+    if resume_query:
+        # 意图要同时驱动两件事：权威修正的过滤门槛（v3）与回答口径（U1）。
+        # 只算一次、写回 input_context，否则中断恢复后的回答会比正常回答少一档口径。
+        resume_intent = preprocess(resume_query)
+        input_context["request_intent"] = resume_intent.intent
+        input_context["request_intent_confidence"] = resume_intent.confidence
+        resume_injection = await _inject_memory_and_corrections(
+            db,
+            uid=uid,
+            thread_id=thread_id,
+            query=resume_query,
+            kb_ids=(agent_config or {}).get("knowledges") or [],
+            intent=resume_intent.intent,
+            input_context=input_context,
+        )
+        memory_enabled = resume_injection.memory_enabled
     context = _build_agent_context(agent, input_context)
     langfuse_run = _build_langfuse_run_context(
         current_user=current_user,
@@ -1296,7 +1546,15 @@ async def stream_agent_resume(
             yield make_resume_chunk(status="warning", message=f"消息保存失败: {e}", meta=meta)
 
         if interrupted:
+            # 同主链路：续跑再次被中断也不入队，把这一轮继续挂着等下一次补齐。
             return
+
+        # 续跑入队：中断轮刻意没被消费（见主链路的说明），这里输出补齐后重放入队，
+        # 游标就会连同该轮一起推进，不必单独维护"未抽取"的标记。
+        try:
+            await enqueue_turn_memory_extraction(thread_id)
+        except Exception:
+            logger.exception("failed to enqueue memory extraction on resume")
 
         yield make_resume_chunk(status="finished", meta=meta)
 

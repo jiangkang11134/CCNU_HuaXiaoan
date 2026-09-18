@@ -68,6 +68,14 @@ class KnowledgeFile(Base):
     chunk_count = Column(Integer, default=0)
     token_count = Column(BigInteger, default=0)
     content_type = Column(String(64))
+    # 文件来源：'upload'（正常上传）/ 'feedback_pool'（P4 反馈改写图块的合成文件，
+    # 界面默认隐藏，按 ticket 由系统自动维护）
+    source_type = Column(String(32), nullable=False, default="upload", index=True)
+    # 该文件适用的图谱抽取域（取值见 graphs/extractors/domains.py）。
+    # 空 = 跟随知识库级配置（可能是通用抽取，也可能没配）。
+    # 放在**文件级**而非知识库级，是为了让一个库里同时容纳化学品手册与管理办法、
+    # 各自按自己的本体抽取，而跨族连边仍落在同一张图上——按域分库做不到这一点。
+    doc_domain = Column(String(32), index=True)
     processing_params = Column(JSON_VALUE)
     is_folder = Column(Boolean, default=False)
     error_message = Column(Text)

@@ -84,8 +84,116 @@ TODO_MID_PROMPT = """
 每个待办任务名称必须简短，控制在 20 个中文汉字以内。
 """
 
+# ---------------------------------------------------------------------------
+# 记忆抽取纪律（原 MEMORY_OBSERVE_PROMPT）已下线
+#
+# 这里原本是"用户偏好观察"围栏协议：要求主模型在回答正文末尾附一个
+# ```yuxi-memory 块，由流式层的剥离状态机解析后落库。
+#
+# 2026-09 改造后整体移除：抽取改为**回答结束后由后台任务独立调一次模型**
+# （yuxi.memory.extraction），回答 prompt 因此不必再背二十多行抽取纪律，
+# 流式层也不必再跨 chunk 剥离协议标记。抽取开关仍是 SystemKV ``memory_observe``。
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# U1：意图 → 回答口径
+#
+# chat_service 每轮都会把意图分类结果写进 context.request_intent（含置信度），
+# 这里把它翻译成"该怎么答"的纪律。意图分类本身很早就有，但从没人消费，
+# 于是"知识查询"和"闲聊"共用同一套口径。
+#
+# 边界（与 M1 一致）：口径只约束**表达与依据纪律**（要不要检索、能不能把用户
+# 说法当依据、要不要带依据），不改变结论层内容。偏好可以影响详略与格式，
+# 绝不可以影响安全规范、相容性禁忌与合规结论。
+# ---------------------------------------------------------------------------
+
+DEFAULT_INTENT = "graph_rag_query"
+# 偏离默认口径的意图必须先过置信度闸门，理由见 resolve_intent_caliber 的说明。
+INTENT_CALIBER_MIN_CONFIDENCE = 0.7
+
+KB_GROUNDED_CALIBER = """
+<| 回答口径：知识查询 |>
+当问题涉及实验室安全知识（化学品性质与相容性、设备与仪器操作、危废处置、应急处置、
+安全规范与法规标准、实验步骤）时，你必须先检索知识库，以检索到的内容为依据作答，
+不得凭印象、常识或训练记忆直接给出结论。
+- 检索不到依据时，明确说明"知识库中未检索到相关依据"，再给出一般性提示，并标明这不是本知识库的结论。
+- 涉及相容性禁忌、禁用条件、限值、操作顺序的内容，表述必须与检索结果一致，
+  不要合并、外推或推导出比原文更宽或更严的结论。
+- 不要为了让回答显得完整而补充未经检索支持的具体数值、品名、标准编号或条款号。
+若问题与实验室安全知识无关（闲聊、写作、代码、算术等），按一般助手方式正常作答，不受上述约束。
+"""
+
+CORRECTION_CALIBER = """
+<| 回答口径：用户反馈纠错 |>
+用户认为你上一轮的回答有误。此时：
+- 先准确复述你理解到的分歧点，再逐条核对。不要辩解，也不要重复原答案充数。
+- "用户说错了"本身不构成依据。用户提供的信息只能作为排查线索，
+  最终结论仍须以知识库检索结果、或已由管理员核实的修正为准。
+- 核对后确认原回答有误：明确承认，给出更正内容与依据。
+- 知识库依据支持原回答：如实说明依据所在，并指出用户理解可能有偏差的地方，语气保持尊重。
+- 双方依据都不足：说明当前无法判定，并指出需要补充什么信息才能判定。
+"""
+
+MEMORY_CANDIDATE_CALIBER = """
+<| 回答口径：用户自述信息 |>
+用户正在陈述关于自己的信息（专业、阶段、研究方向、偏好、项目约束等）。此时：
+- 用一句话简短确认即可，不要展开，也不要复述用户原话的全部细节。
+- 用户自述的偏好只影响表达方式（详略、语言、格式），不得据此改变安全结论、相容性判断、
+  限值与操作要求；偏好不是安全依据。
+- 若用户自述中包含与实验室安全规范冲突的说法，以规范为准并明确指出冲突，不要迁就。
+"""
+
+SIMPLE_TASK_CALIBER = """
+<| 回答口径：简单任务 |>
+这是无需检索知识库的简单任务。直接给出结果：不要铺垫，不要罗列背景知识，
+不要附加大段安全提示，也不要在结果之外补充无关内容。
+"""
+
+INTENT_CALIBERS = {
+    DEFAULT_INTENT: KB_GROUNDED_CALIBER,
+    "correction": CORRECTION_CALIBER,
+    "memory_candidate": MEMORY_CANDIDATE_CALIBER,
+    "simple_task": SIMPLE_TASK_CALIBER,
+}
+
+
+def resolve_intent_caliber(intent, confidence) -> str:
+    """意图 → 回答口径。
+
+    默认口径（知识查询）在**任意**置信度下都生效。规则预处理的兜底结果就是它，
+    置信度只有 0.5；若也要求过闸门，绝大多数请求都拿不到口径，这个能力等于白做。
+    它本身也只声明"涉及实验室安全知识时要有依据"，对任何话题都安全，
+    因此不需要置信度保护。
+
+    偏离默认的三个口径则必须过闸门：把真实提问误判成"纠错"会让模型转而去顺从
+    用户说法，误判成"用户自述"会让它把偏好当结论——都是比"口径不生效"更糟的
+    失败模式。置信度不足或意图未知时，一律退回默认口径（更严的那一档）。
+    """
+    key = str(intent or "").strip()
+    if key == DEFAULT_INTENT or key not in INTENT_CALIBERS:
+        return INTENT_CALIBERS[DEFAULT_INTENT]
+    try:
+        value = float(confidence)
+    except (TypeError, ValueError):
+        return INTENT_CALIBERS[DEFAULT_INTENT]
+    # 写成 `not (value >= θ)` 而不是 `value < θ`：JSON 里出现 NaN 时 Python 的 json
+    # 能解析成功，而 NaN 与任何数比较都是 False，`<` 会让它蒙混过关。
+    if not value >= INTENT_CALIBER_MIN_CONFIDENCE:
+        return INTENT_CALIBERS[DEFAULT_INTENT]
+    return INTENT_CALIBERS[key]
+
 
 def build_prompt_with_context(context):
     current_date = f"当前日期：{shanghai_now().strftime('%Y-%m-%d')}"
-    system_prompt = f"{current_date}\n\n{PROMPT.strip()}\n\n{context.system_prompt or ''}"
-    return system_prompt.strip()
+    parts = [current_date, PROMPT.strip(), context.system_prompt or ""]
+    # 口径放在 agent 自己的 system_prompt 之后：它是安全纪律，与 agent 角色设定
+    # 冲突时应以口径为准。开关默认开（缺字段的调用方也按开处理），
+    # 留 SystemKV 开关是为了措辞出问题时能立刻回退而不发版。
+    if getattr(context, "intent_caliber", True):
+        parts.append(resolve_intent_caliber(
+            getattr(context, "request_intent", ""),
+            getattr(context, "request_intent_confidence", 0.0),
+        ).strip())
+    # 记忆抽取纪律已从回答 prompt 里整体移除（见 MEMORY_OBSERVE_PROMPT_REMOVED_NOTE）：
+    # 它现在由 yuxi.memory.extraction 的独立调用承担，回答链路不再需要知道这件事。
+    return "\n\n".join(p for p in parts if p).strip()

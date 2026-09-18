@@ -1,10 +1,16 @@
 <template>
   <!-- 反馈列表模态框 -->
   <a-modal v-model:open="modalVisible" title="用户反馈详情" width="1200px" :footer="null">
-    <a-space style="margin-bottom: 16px">
+    <a-space style="margin-bottom: 16px" :size="12" wrap>
       <a-segmented
         v-model:value="feedbackFilter"
         :options="feedbackOptions"
+        @change="loadFeedbacks"
+      />
+      <a-select
+        v-model:value="statusFilter"
+        :options="statusFilterOptions"
+        style="min-width: 180px"
         @change="loadFeedbacks"
       />
     </a-space>
@@ -34,17 +40,41 @@
               <div class="username">{{ feedback.username || '未知用户' }}</div>
             </div>
           </div>
-          <a-tag
-            :color="feedback.rating === 'like' ? 'green' : 'red'"
-            class="rating-tag"
-            size="small"
-          >
-            <template #icon>
-              <LikeOutlined v-if="feedback.rating === 'like'" />
-              <DislikeOutlined v-else />
-            </template>
-            {{ feedback.rating === 'like' ? '点赞' : '点踩' }}
-          </a-tag>
+          <div class="header-tags">
+            <a-tag
+              :color="statusColor(feedback.processing_status)"
+              size="small"
+              class="rating-tag"
+            >
+              {{ statusLabel(feedback.processing_status) }}
+            </a-tag>
+            <a-tag
+              v-if="feedback.ticket_id"
+              color="blue"
+              size="small"
+              class="rating-tag ticket-tag"
+            >
+              工单 #{{ feedback.ticket_id }}
+            </a-tag>
+            <a-tag
+              v-else-if="feedback.rating === 'dislike'"
+              size="small"
+              class="rating-tag ticket-tag"
+            >
+              未转工单
+            </a-tag>
+            <a-tag
+              :color="feedback.rating === 'like' ? 'green' : 'red'"
+              class="rating-tag"
+              size="small"
+            >
+              <template #icon>
+                <LikeOutlined v-if="feedback.rating === 'like'" />
+                <DislikeOutlined v-else />
+              </template>
+              {{ feedback.rating === 'like' ? '点赞' : '点踩' }}
+            </a-tag>
+          </div>
         </div>
 
         <!-- 卡片内容：对话信息、消息内容和反馈原因 -->
@@ -99,13 +129,44 @@
           <div v-if="feedback.reason" class="reason-section">
             <div class="reason-content">{{ feedback.reason }}</div>
           </div>
+
+          <!-- 处置备注（管理员填写） -->
+          <div v-if="feedback.processing_note" class="note-section">
+            <div class="note-content">{{ feedback.processing_note }}</div>
+          </div>
         </div>
 
-        <!-- 卡片底部：时间信息 -->
+        <!-- 卡片底部：时间 + 处置入口 -->
         <div class="card-footer">
-          <div class="time-info">
-            <ClockCircleOutlined />
-            <span>{{ formatFullDate(feedback.created_at) }}</span>
+          <div class="footer-row">
+            <div class="time-info">
+              <ClockCircleOutlined />
+              <span>{{ formatFullDate(feedback.created_at) }}</span>
+              <span class="priority-hint">优先级 {{ feedback.priority ?? '-' }}</span>
+            </div>
+            <a-space :size="4">
+              <a-tooltip
+                :title="canConvert(feedback) ? '' : '只有带理由的点踩、且尚未建单的反馈才能转工单'"
+              >
+                <a-button
+                  type="link"
+                  size="small"
+                  :disabled="!canConvert(feedback)"
+                  @click="openTicketModal(feedback)"
+                >
+                  转工单
+                </a-button>
+              </a-tooltip>
+              <a-button type="link" size="small" @click="openProcessModal(feedback)">
+                处置
+              </a-button>
+            </a-space>
+          </div>
+          <div v-if="feedback.processed_by" class="processed-info">
+            最近处置：{{ feedback.processed_by }}
+            <template v-if="feedback.processed_at">
+              · {{ formatFullDate(feedback.processed_at) }}
+            </template>
           </div>
         </div>
       </div>
@@ -116,10 +177,80 @@
       </div>
     </div>
   </a-modal>
+
+  <!-- 处置弹窗：改状态 / 优先级 / 备注 -->
+  <a-modal
+    v-model:open="processModalVisible"
+    title="处置反馈"
+    :confirm-loading="processSubmitting"
+    ok-text="保存"
+    cancel-text="取消"
+    @ok="submitProcess"
+  >
+    <a-form layout="vertical">
+      <a-form-item label="处置状态">
+        <a-select v-model:value="processForm.processing_status" :options="processStatusOptions" />
+      </a-form-item>
+      <a-form-item label="优先级（0-100，越大越先看）">
+        <a-input-number
+          v-model:value="processForm.priority"
+          :min="0"
+          :max="100"
+          style="width: 100%"
+        />
+      </a-form-item>
+      <a-form-item label="处置备注">
+        <a-textarea
+          v-model:value="processForm.processing_note"
+          :rows="3"
+          :maxlength="2000"
+          show-count
+          placeholder="记录判断依据，例如「属于个人表达偏好，不转工单」"
+        />
+      </a-form-item>
+    </a-form>
+  </a-modal>
+
+  <!-- 转工单弹窗 -->
+  <a-modal
+    v-model:open="ticketModalVisible"
+    title="转为纠错工单"
+    :confirm-loading="ticketSubmitting"
+    ok-text="确认转单"
+    cancel-text="取消"
+    @ok="submitTicket"
+  >
+    <a-alert
+      type="info"
+      show-icon
+      message="工单只会停在待审核状态，不影响线上回答；是否采纳由审核环节决定。"
+      style="margin-bottom: 12px"
+    />
+    <a-form layout="vertical">
+      <a-form-item label="作用域">
+        <a-select v-model:value="ticketForm.scope" :options="scopeOptions" />
+      </a-form-item>
+      <a-form-item label="备注（可选）">
+        <a-textarea
+          v-model:value="ticketForm.note"
+          :rows="3"
+          :maxlength="2000"
+          show-count
+          placeholder="留空则自动记为「已由管理员转为纠错工单 #N，待审核」"
+        />
+      </a-form-item>
+    </a-form>
+    <a-alert
+      v-if="ticketForm.scope === 'kb_truth'"
+      type="warning"
+      show-icon
+      message="知识性偏差会对全体用户生效，请确认这不是个人表达偏好。"
+    />
+  </a-modal>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { LikeOutlined, DislikeOutlined, ClockCircleOutlined } from '@ant-design/icons-vue'
 import { dashboardApi } from '@/apis/dashboard_api'
@@ -162,6 +293,7 @@ const expandedStates = ref(new Map())
 // 显示模态框
 const show = () => {
   modalVisible.value = true
+  loadStatusOptions()
   loadFeedbacks()
 }
 
@@ -205,7 +337,8 @@ const loadFeedbacks = async () => {
   try {
     const params = {
       rating: feedbackFilter.value === 'all' ? undefined : feedbackFilter.value,
-      agent_id: props.agentId || undefined
+      agent_id: props.agentId || undefined,
+      processing_status: statusFilter.value || undefined
     }
 
     const response = await dashboardApi.getFeedbacks(params)
@@ -226,6 +359,131 @@ const getFeedbackDefaultAvatarSrc = (feedback) =>
 
 // 格式化完整日期
 const formatFullDate = (dateString) => formatFullDateTime(dateString)
+
+// ---------------------------------------------------------------------------
+// 反馈处置（收集层 → 处置层的人工闸门）
+//
+// 学生的点踩不会自动建单，只会停在 message_feedbacks。这里给管理员补上出口：
+// 改处置状态/优先级/备注，或把它转成待审核的纠错工单。
+// ---------------------------------------------------------------------------
+
+// 处置状态词表来自后端（唯一口径），不要在前端硬编码
+const statusOptions = ref([])
+const statusFilter = ref('')
+
+const statusLabelMap = computed(() => {
+  const map = {}
+  statusOptions.value.forEach((item) => {
+    map[item.value] = item.label
+  })
+  return map
+})
+
+const statusLabel = (value) => statusLabelMap.value[value] || value || '-'
+
+// 只影响展示配色；未知状态回落到默认灰
+const STATUS_COLORS = {
+  backlog: 'default',
+  faculty_pending: 'orange',
+  admin_pending: 'gold',
+  ready_for_review: 'blue',
+  ticketed: 'cyan',
+  resolved: 'green',
+  dismissed: 'default'
+}
+const statusColor = (value) => STATUS_COLORS[value] || 'default'
+
+const statusFilterOptions = computed(() => [
+  { label: '全部处置状态', value: '' },
+  ...statusOptions.value
+])
+
+const processStatusOptions = computed(() => statusOptions.value)
+
+// 作用域：空值交给后端按内容自动判定（与点踩自动建单同一套判定）
+const scopeOptions = [
+  { label: '自动判定（按内容）', value: '' },
+  { label: '知识性偏差 · 全局生效', value: 'kb_truth' },
+  { label: '个人偏好 · 仅本人生效', value: 'user_pref' },
+  { label: '部门规则 · 同部门生效', value: 'dept_rule' }
+]
+
+const loadStatusOptions = async () => {
+  if (statusOptions.value.length) return
+  try {
+    statusOptions.value = await dashboardApi.getFeedbackStatuses()
+  } catch (error) {
+    // 拿不到词表不阻塞列表：状态列会退化成显示原始值
+    console.error('加载处置状态词表失败:', error)
+  }
+}
+
+// 只有"带理由的点踩、且尚未建单"才可转工单——后端也会再校验一次
+const canConvert = (feedback) =>
+  feedback.rating === 'dislike' && !!feedback.reason && !feedback.ticket_id
+
+// 处置弹窗
+const processModalVisible = ref(false)
+const processSubmitting = ref(false)
+const processForm = ref({ id: null, processing_status: 'backlog', priority: 50, processing_note: '' })
+
+const openProcessModal = (feedback) => {
+  processForm.value = {
+    id: feedback.id,
+    processing_status: feedback.processing_status || 'backlog',
+    priority: feedback.priority ?? 50,
+    processing_note: feedback.processing_note || ''
+  }
+  processModalVisible.value = true
+}
+
+const submitProcess = async () => {
+  processSubmitting.value = true
+  try {
+    await dashboardApi.updateFeedback(processForm.value.id, {
+      processing_status: processForm.value.processing_status,
+      priority: processForm.value.priority,
+      processing_note: processForm.value.processing_note
+    })
+    message.success('已保存处置结果')
+    processModalVisible.value = false
+    await loadFeedbacks()
+  } catch (error) {
+    console.error('保存处置结果失败:', error)
+    message.error(error?.message || '保存失败，请稍后重试')
+  } finally {
+    processSubmitting.value = false
+  }
+}
+
+// 转工单弹窗
+const ticketModalVisible = ref(false)
+const ticketSubmitting = ref(false)
+const ticketForm = ref({ id: null, scope: '', note: '' })
+
+const openTicketModal = (feedback) => {
+  ticketForm.value = { id: feedback.id, scope: '', note: '' }
+  ticketModalVisible.value = true
+}
+
+const submitTicket = async () => {
+  ticketSubmitting.value = true
+  try {
+    const res = await dashboardApi.convertFeedbackToTicket(ticketForm.value.id, {
+      // 空串表示"交给后端自动判定"，不要传成空 scope
+      scope: ticketForm.value.scope || undefined,
+      note: ticketForm.value.note || undefined
+    })
+    message.success(`已转为纠错工单 #${res.ticket_id}，等待审核`)
+    ticketModalVisible.value = false
+    await loadFeedbacks()
+  } catch (error) {
+    console.error('转工单失败:', error)
+    message.error(error?.message || '转工单失败，请稍后重试')
+  } finally {
+    ticketSubmitting.value = false
+  }
+}
 
 // 监听 agentId 变化，重新加载数据
 watch(
@@ -324,6 +582,10 @@ watch(
 .rating-tag {
   font-weight: 500;
   font-size: 11px;
+}
+
+.ticket-tag {
+  margin-right: 4px;
 }
 
 // 卡片内容 - 紧凑
@@ -454,6 +716,17 @@ watch(
   border-top: 1px solid var(--gray-100);
   background: var(--gray-25);
   border-radius: 0 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .time-info {
@@ -462,6 +735,41 @@ watch(
   gap: 4px;
   font-size: 11px;
   color: var(--gray-500);
+}
+
+.priority-hint {
+  color: var(--gray-400);
+}
+
+.processed-info {
+  font-size: 11px;
+  color: var(--gray-500);
+  word-break: break-all;
+}
+
+// 卡片头部的标签组（状态 / 工单 / 好恶）
+.header-tags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+// 处置备注（管理员填写），与用户反馈原因区分开
+.note-section {
+  margin: 0;
+}
+
+.note-content {
+  background: var(--gray-50);
+  padding: 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--main-color);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--gray-700);
+  word-break: break-word;
 }
 
 // 空状态

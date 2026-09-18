@@ -2,9 +2,9 @@
   <div class="user-config-settings">
     <div class="header-section">
       <div class="header-content">
-        <div class="section-title">用户配置(Beta)</div>
+        <div class="section-title">用户配置</div>
         <p class="section-description">
-          配置当前用户的专属设置。当前为测试预览版，暂未引入新的特性，仅作技术能力拓展。
+          配置当前用户的专属设置。记忆相关的开关只影响本账号，不改变知识库与安全规范。
         </p>
       </div>
       <div class="header-actions">
@@ -23,10 +23,13 @@
         <div class="config-row">
           <div class="config-meta">
             <div class="config-title-line">
-              <span class="config-title">是否启用 Memory</span>
-              <span class="reserved-badge">预留开关</span>
+              <span class="config-title">启用长期记忆</span>
             </div>
-            <p class="config-description">当前仅保存配置值，暂不接入智能体运行逻辑。</p>
+            <p class="config-description">
+              开启后，已确认的长期记忆（跨对话保留）会参与回答，用于个性化与指代消歧；
+              关闭时只使用当前对话内的事实。当前对话内的事实始终可用，不受本开关影响。
+              长期记忆不会作为实验室安全规范或合规结论的依据。
+            </p>
           </div>
           <a-switch :checked="draftEnableMemory" @change="draftEnableMemory = Boolean($event)" />
         </div>
@@ -43,8 +46,8 @@ import { userConfigApi } from '@/apis/user_config_api'
 
 const loading = ref(false)
 const saving = ref(false)
-const draftEnableMemory = ref(false)
-const savedEnableMemory = ref(false)
+const draftEnableMemory = ref(true)
+const savedEnableMemory = ref(true)
 
 const hasUnsavedChanges = computed(() => draftEnableMemory.value !== savedEnableMemory.value)
 const saveButtonText = computed(() => (hasUnsavedChanges.value ? '保存（有修改）' : '保存'))
@@ -150,20 +153,6 @@ onMounted(loadUserConfig)
     font-size: 14px;
     font-weight: 500;
     line-height: 1.4;
-  }
-
-  .reserved-badge {
-    display: inline-flex;
-    align-items: center;
-    height: 22px;
-    padding: 0 8px;
-    border-radius: 999px;
-    border: 1px solid var(--color-warning-100);
-    background: var(--color-warning-10);
-    color: var(--color-warning-700);
-    font-size: 12px;
-    line-height: 1;
-    white-space: nowrap;
   }
 
   .config-description {

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from server.routers.user_router import get_logged_in_user, get_user_config, update_user_config
 from yuxi.config import UserConfigSchema
+from yuxi.config.user import DEFAULT_ENABLE_MEMORY
 from yuxi.storage.postgres.models_business import Base, Department, User
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.unit]
@@ -49,10 +50,35 @@ async def test_user_config_routes_scope_to_current_user(session):
         current_user=user_a,
         db=db,
     )
-    other_config = await get_user_config(current_user=user_b, db=db)
+    # 两人都显式写过、且取值相反：断言的是"配置按 uid 隔离"。
+    # 若让 user_b 保持"从未配置"，这里就退化成断言系统默认值——
+    # DEFAULT_ENABLE_MEMORY 一改就误报（曾经正是如此）。
+    other_config = await update_user_config(
+        UserConfigSchema(enable_memory=False),
+        current_user=user_b,
+        db=db,
+    )
+    reloaded_own = await get_user_config(current_user=user_a, db=db)
 
     assert own_config["enable_memory"] is True
     assert other_config["enable_memory"] is False
+    assert reloaded_own["enable_memory"] is True
+
+
+async def test_user_config_unconfigured_user_falls_back_to_system_default(session):
+    """没有 user_config 行的用户（绝大多数人从未改过设置）必须走系统默认，
+    不能把"查不到记录"当成"用户手动关闭"——那会让默认开启的策略在热路径上失效。"""
+    db, _user_a, _user_b = session
+    never_configured = User(
+        username="Never Configured",
+        uid="never_configured_user",
+        password_hash="$argon2id$placeholder",
+        role="user",
+    )
+
+    config = await get_user_config(current_user=never_configured, db=db)
+
+    assert config["enable_memory"] is DEFAULT_ENABLE_MEMORY
 
 
 async def test_user_config_allows_logged_in_user_without_department():

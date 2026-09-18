@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
+from arq import cron
 
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
@@ -552,6 +553,8 @@ async def _worker_startup(ctx):
     pg_manager.initialize()
     await pg_manager.create_business_tables()
     await pg_manager.ensure_business_schema()
+    # Memory schema currently evolves with the knowledge/runtime schema.
+    await pg_manager.ensure_knowledge_schema()
     await ensure_builtin_mcp_servers_in_db()
     async with pg_manager.get_async_session_context() as session:
         await init_builtin_skills(session)
@@ -562,8 +565,84 @@ async def _worker_shutdown(ctx):
     await pg_manager.close()
 
 
+async def process_feedback_batch(ctx):
+    """每周六 03:00（Asia/Shanghai，UTC 周五 19:00）整理高优先级反馈。"""
+    del ctx
+    from yuxi.services.feedback_service import process_feedback_batch as process_batch
+
+    await process_batch()
+
+
+async def expire_memory_facts(ctx):
+    """Persist expired lifecycle states; reads already filter elapsed rows."""
+    del ctx
+    from yuxi.memory.service import MemoryService
+
+    async with pg_manager.get_async_session_context() as session:
+        await MemoryService.expire_memories(session)
+
+
+async def calibrate_correction_thresholds(ctx):
+    """每周校准权威修正检索阈值（P3，设计文档 §4.3）；冷启动与限幅在 calibration 内。"""
+    del ctx
+    from yuxi.self_evolution.calibration import run_correction_calibration
+
+    await run_correction_calibration()
+
+
+async def write_correction_graph(ctx, ticket_id: int, actor_uid: str | None = None):
+    """P4：把审核通过的纠错反馈改写成图块并写入 Graph RAG。"""
+    del ctx
+    from yuxi.self_evolution.graph_writeback import write_correction_to_graph
+
+    async with pg_manager.get_async_session_context() as session:
+        await write_correction_to_graph(session, int(ticket_id), actor_uid=actor_uid)
+
+
+async def preenrich_correction(ctx, ticket_id: int):
+    """建单后预富化 entity_hints（P1 的实体部分提前跑），供审核前展示。"""
+    del ctx
+    from sqlalchemy import select
+
+    from yuxi.self_evolution.enrichment import preenrich_entity_hints
+    from yuxi.storage.postgres.models_business import CorrectionTicket
+
+    async with pg_manager.get_async_session_context() as session:
+        row = (await session.execute(
+            select(CorrectionTicket).where(CorrectionTicket.id == int(ticket_id))
+        )).scalar_one_or_none()
+        if row is None:
+            return
+        await preenrich_entity_hints(session, row)
+
+
+async def extract_turn_memory(ctx, thread_id: str):
+    """后台独立抽取本轮问答的事实/长期记忆（替代旧围栏协议）。
+
+    以 ``thread_id`` 为单位重放游标之后的 ``agent_runs``；抽取自建 session，
+    失败由 ARQ 重试，重放被"内容相同即跳过"的幂等语义吸收，不会重复落库。
+
+    这里显式 commit 是为 ``call_failed`` 分支兜底：那条路径只写了埋点事件、
+    没有推进游标，事件不能随 session 关闭一起丢掉，否则抽取失败是**静默**的。
+    """
+    del ctx
+    from yuxi.memory.extraction import extract_pending_turns
+
+    async with pg_manager.get_async_session_context() as session:
+        await extract_pending_turns(session, thread_id)
+        await session.commit()
+
+
 class WorkerSettings:
-    functions = [process_agent_run]
+    functions = [process_agent_run, process_feedback_batch, expire_memory_facts,
+                 calibrate_correction_thresholds, write_correction_graph, preenrich_correction,
+                 extract_turn_memory]
+    cron_jobs = [
+        cron(process_feedback_batch, weekday={5}, hour=19, minute=0, second=0),
+        cron(expire_memory_facts, hour=18, minute=0, second=0),
+        # 每周日 UTC 19:30（北京周一 03:30）：读上一周期信号校准 θ_d/θ_s
+        cron(calibrate_correction_thresholds, weekday={6}, hour=19, minute=30, second=0),
+    ]
     max_tries = 2
     retry_jobs = True
     job_timeout = 3600

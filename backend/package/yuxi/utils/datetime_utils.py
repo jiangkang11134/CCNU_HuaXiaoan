@@ -117,14 +117,46 @@ def normalize_iterable_to_utc(values: Iterable[dt.datetime | None]) -> list[dt.d
 
 def format_utc_datetime(value: dt.datetime | None) -> str | None:
     """
-    Format a datetime to UTC ISO 8601 string, handling naive datetimes.
+    Format a datetime to a UTC ISO 8601 string (trailing ``Z``).
 
     Returns None for None input.
-    Naive datetimes are assumed to be in UTC.
+
+    ⚠️ naive 输入的语义（与旧文档描述相反，务必先确认来源）：
+    本函数委托给 :func:`utc_isoformat` → :func:`ensure_utc`，而 ``ensure_utc`` 的约定是
+    **naive 视为 Asia/Shanghai**，因此 naive 输入会被真正换算，**瞬时整 8 小时地改变**
+    （并不是"补个标记"）::
+
+        >>> format_utc_datetime(dt.datetime(2026, 9, 17, 3, 0, 0))
+        '2026-09-16T19:00:00Z'
+
+    项目里 **DB 列存的是 naive UTC**（``utc_now_naive()`` / ``MemoryService._now()`` /
+    ``Column(DateTime, default=utc_now_naive)``），所以本函数只适用于
+    **用户输入**（表单/API 传来的无时区串，按本地时间解释）这类值的序列化。
+
+    要序列化 DB 列（naive UTC）请用 :func:`format_naive_utc_datetime`。
     """
     if value is None:
         return None
     return utc_isoformat(value)
+
+
+def format_naive_utc_datetime(value: dt.datetime | None) -> str | None:
+    """
+    Serialize a datetime that is **already UTC**, tolerating naive values.
+
+    - naive → 视为 UTC，**只补标记、不做任何偏移**（对应 DB 列约定：``utc_now_naive()``）
+    - aware → 正常换算到 UTC
+
+    Returns None for None input.
+
+    与 :func:`format_utc_datetime` 的唯一差别在 naive 输入：那个把 naive 当 Asia/Shanghai。
+    对 aware 输入两者输出完全一致（都是 ``astimezone(UTC)`` + ``Z``）。
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace(_ISO_Z_SUFFIX, "Z")
 
 
 def utc_isoformat_from_timestamp(timestamp: float | int | None) -> str | None:
@@ -148,5 +180,6 @@ __all__ = [
     "coerce_any_to_utc_datetime",
     "normalize_iterable_to_utc",
     "format_utc_datetime",
+    "format_naive_utc_datetime",
     "utc_isoformat_from_timestamp",
 ]

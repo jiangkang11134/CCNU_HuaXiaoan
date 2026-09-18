@@ -112,6 +112,19 @@ const router = createRouter({
       ]
     },
     {
+      path: '/back/corrections',
+      name: 'corrections',
+      component: AppLayout,
+      children: [
+        {
+          path: '',
+          name: 'CorrectionReviewComp',
+          component: () => import('../views/CorrectionReviewView.vue'),
+          meta: { keepAlive: false, requiresAuth: true, requiresAdmin: true }
+        }
+      ]
+    },
+    {
       path: '/back/dashboard',
       name: 'dashboard',
       component: AppLayout,

@@ -3,6 +3,7 @@ import { ref, onMounted, computed, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import {
   BarChart3,
+  ClipboardCheck,
   ClipboardList,
   LibraryBig,
   Building2,
@@ -142,6 +143,13 @@ const mainList = computed(() => {
     path: '/back/conversations',
     icon: BarChart3,
     activeIcon: BarChart3
+  })
+
+  items.push({
+    name: '反馈审批',
+    path: '/back/corrections',
+    icon: ClipboardCheck,
+    activeIcon: ClipboardCheck
   })
 
   items.push({

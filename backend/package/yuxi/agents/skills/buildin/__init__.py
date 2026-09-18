@@ -53,4 +53,14 @@ BUILTIN_SKILLS: list[BuiltinSkillSpec] = [
         version="2026.06.05",
         mcp_dependencies=("mcp-server-chart",),
     ),
+    # 记忆抽取是**无工具**的技能：它的 SKILL.md 既是给人和 Agent 看的机制说明，
+    # 也是后台抽取调用（memory/extraction.build_system_prompt）真正读取的抽取口径。
+    # 因此刻意不声明 tool_dependencies —— 它不需要任何 agent 工具，声明了反而会
+    # 让 SkillsMiddleware 的门控去放出无关工具。
+    BuiltinSkillSpec(
+        slug="memory-extraction",
+        source_dir=_SKILLS_ROOT / "memory-extraction",
+        description="会话事实与长期记忆的抽取规范：从多轮问答中识别值得留存的用户画像与会话约束，按白名单事实键和通道归属落库。改动记忆行为、排查记忆为何没生效时查阅。",
+        version="2026.09.17",
+    ),
 ]

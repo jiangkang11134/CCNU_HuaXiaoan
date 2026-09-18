@@ -126,10 +126,48 @@ def _parse_data_uri(data_uri: str) -> tuple[bytes, str]:
     return image_data, mime_type
 
 
+#: 哪些格式的内嵌图值得 OCR。xlsx 里的"图片"多是图表，OCR 出来是碎片，
+#: 混进正文 chunk 只会污染图谱抽取，所以只对文档类生效。
+_OCR_EMBEDDED_IMAGE_EXTS = frozenset({".docx", ".pptx"})
+
+
+def _ocr_embedded_image(image_data: bytes, mime_type: str, params: dict | None, index: int) -> str:
+    """对文档内嵌图片跑一遍 OCR，返回识别文本（失败或禁用时返回空串）。
+
+    存在的理由：docx/pptx 的内嵌图原先只上传 MinIO、替换成 ``![图片](url)`` 链接，
+    **图里的文字直接丢弃**。于是"正文就是一张扫描图"的文档会静默解析成 0 字符——
+    用户以为进了库，实际对检索与图谱零贡献，且全程没有任何报错。
+
+    走 :func:`parse_image` 复用同一条 OCR 链路（同一套引擎、同一份参数解析），
+    不另起一套调用。失败只记日志、返回空串，绝不让单张图打断整篇解析。
+    """
+    engine, _ = _resolve_ocr_engine_params(params)
+    if engine == "disable":
+        return ""
+
+    suffix = "." + (mime_type.split("/")[-1] or "png")
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(image_data)
+            tmp_path = tmp.name
+        return (parse_image(tmp_path, params=params) or "").strip()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"内嵌图片 OCR 失败（第 {index} 张，engine={engine}）：{e}")
+        return ""
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def _convert_with_docling(file_path: Path, params: dict | None = None) -> str:
     """使用 Docling 将 docx/xlsx/pptx 转换为 Markdown。"""
     params = params or {}
     image_bucket, image_prefix = _resolve_image_storage_params(params)
+    ocr_images = file_path.suffix.lower() in _OCR_EMBEDDED_IMAGE_EXTS
 
     converter = _get_docling_converter()
     result = converter.convert(file_path)
@@ -141,7 +179,7 @@ def _convert_with_docling(file_path: Path, params: dict | None = None) -> str:
 
     if hasattr(doc, "pictures") and doc.pictures:
         replacements: list[str] = []
-        for pic in doc.pictures:
+        for index, pic in enumerate(doc.pictures, 1):
             uri = str(pic.image.uri) if hasattr(pic, "image") and hasattr(pic.image, "uri") else ""
             if uri.startswith("data:"):
                 filename = "image"
@@ -149,7 +187,18 @@ def _convert_with_docling(file_path: Path, params: dict | None = None) -> str:
                     image_data, mime_type = _parse_data_uri(uri)
                     filename = f"image_{int(time.time() * 1000000)}.{mime_type.split('/')[-1]}"
                     url = _upload_image_to_minio(image_data, filename, image_bucket, image_prefix)
-                    replacements.append(f"![{filename}]({url})")
+                    replacement = f"![{filename}]({url})"
+                    if ocr_images:
+                        recognized = _ocr_embedded_image(image_data, mime_type, params, index)
+                        if recognized:
+                            # 识别文字紧跟在图片链接后，供切块与图谱抽取使用
+                            replacement = f"{replacement}\n\n{recognized}"
+                        else:
+                            logger.warning(
+                                f"内嵌图片未识别出文字（第 {index} 张）：{file_path.name}。"
+                                "若该图承载正文内容，本文档可能几乎解析不出文本。"
+                            )
+                    replacements.append(replacement)
                 except Exception as e:  # noqa: BLE001
                     logger.error(f"上传图片失败 {filename}: {e}")
                     replacements.append(f"[图片: {filename}]")

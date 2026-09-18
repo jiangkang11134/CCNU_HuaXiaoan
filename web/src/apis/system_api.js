@@ -153,3 +153,8 @@ export const modelProviderApi = {
     )
   }
 }
+
+export const modelRoutingApi = {
+  getConfig: async () => apiAdminGet('/api/system/model-routing'),
+  updateConfig: async (payload) => apiAdminPut('/api/system/model-routing', payload)
+}

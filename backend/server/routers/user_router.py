@@ -14,7 +14,11 @@ from yuxi.config import UserConfig, UserConfigSchema
 from yuxi.storage.minio import upload_image_to_minio
 from yuxi.storage.postgres.models_business import APIKey, AgentEnv, User
 from yuxi.utils.auth_utils import AuthUtils
-from yuxi.utils.datetime_utils import coerce_any_to_utc_datetime, format_utc_datetime, utc_now_naive
+from yuxi.utils.datetime_utils import (
+    coerce_any_to_utc_datetime,
+    format_naive_utc_datetime,
+    utc_now_naive,
+)
 
 user_router = APIRouter(prefix="/user", tags=["user"])
 
@@ -293,7 +297,7 @@ async def get_agent_env(
     agent_env = result.scalar_one_or_none()
     if agent_env is None:
         return AgentEnvResponse(env={})
-    return AgentEnvResponse(env=agent_env.env or {}, updated_at=format_utc_datetime(agent_env.updated_at))
+    return AgentEnvResponse(env=agent_env.env or {}, updated_at=format_naive_utc_datetime(agent_env.updated_at))
 
 
 @user_router.put("/agent-env", response_model=AgentEnvResponse)
@@ -308,7 +312,7 @@ async def update_agent_env(
     if current_agent_env is not None and (current_agent_env.env or {}) == env:
         return AgentEnvResponse(
             env=current_agent_env.env or {},
-            updated_at=format_utc_datetime(current_agent_env.updated_at),
+            updated_at=format_naive_utc_datetime(current_agent_env.updated_at),
         )
 
     now = utc_now_naive()
@@ -324,4 +328,4 @@ async def update_agent_env(
     await db.execute(stmt)
     await db.commit()
     # 直接返回刚写入的 env/now，避免身份映射中的旧实例属性导致返回陈旧值
-    return AgentEnvResponse(env=env, updated_at=format_utc_datetime(now))
+    return AgentEnvResponse(env=env, updated_at=format_naive_utc_datetime(now))

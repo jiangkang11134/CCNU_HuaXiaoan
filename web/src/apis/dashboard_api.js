@@ -1,4 +1,4 @@
-import { apiAdminGet } from './base'
+import { apiAdminGet, apiAdminPost, apiAdminPut } from './base'
 
 /**
  * Dashboard API模块
@@ -49,15 +49,45 @@ export const dashboardApi = {
    * @param {Object} params - 查询参数
    * @param {string} params.rating - 反馈类型过滤 (like/dislike/all)
    * @param {string} params.agent_id - 智能体ID过滤
+   * @param {string} params.processing_status - 处置状态过滤
    * @returns {Promise<Array>} - 反馈列表
    */
   getFeedbacks: (params = {}) => {
     const queryParams = new URLSearchParams()
     if (params.rating && params.rating !== 'all') queryParams.append('rating', params.rating)
     if (params.agent_id) queryParams.append('agent_id', params.agent_id)
+    if (params.processing_status) queryParams.append('processing_status', params.processing_status)
 
     return apiAdminGet(`/api/dashboard/feedbacks?${queryParams.toString()}`)
   },
+
+  /**
+   * 反馈处置状态词表（值 + 中文标签）
+   *
+   * 后端是这套词表的唯一口径，前端不要自己硬编码——后端加状态时前端会自动跟上。
+   * @returns {Promise<Array<{value: string, label: string}>>}
+   */
+  getFeedbackStatuses: () => apiAdminGet('/api/dashboard/feedbacks/statuses'),
+
+  /**
+   * 处置一条反馈（改处置状态 / 优先级 / 备注），仅系统管理员
+   * @param {number} feedbackId
+   * @param {Object} payload - { processing_status?, priority?, processing_note? }
+   * @returns {Promise<Object>} - 更新后的处置字段
+   */
+  updateFeedback: (feedbackId, payload = {}) =>
+    apiAdminPut(`/api/dashboard/feedbacks/${feedbackId}`, payload),
+
+  /**
+   * 把一条反馈转成待审核纠错工单，仅系统管理员
+   *
+   * 这是"反馈收集层 → 工单处置层"的人工闸门；学生的点踩不会自动建单。
+   * @param {number} feedbackId
+   * @param {Object} payload - { scope?: 'kb_truth'|'user_pref'|'dept_rule', note?: string }
+   * @returns {Promise<Object>} - { id, ticket_id, processing_status, ... }
+   */
+  convertFeedbackToTicket: (feedbackId, payload = {}) =>
+    apiAdminPost(`/api/dashboard/feedbacks/${feedbackId}/ticket`, payload),
 
   // ========== 新增并行API接口 ==========
 

@@ -18,7 +18,7 @@ from yuxi.repositories.conversation_repository import INVOCATION_CONVERSATION_SO
 from yuxi.services.mention_search_service import invalidate_mention_cache
 from yuxi.storage.minio import StorageError, get_minio_client
 from yuxi.storage.postgres.models_business import User
-from yuxi.utils.datetime_utils import format_utc_datetime, utc_isoformat
+from yuxi.utils.datetime_utils import format_naive_utc_datetime, utc_isoformat
 from yuxi.utils.logging_config import logger
 from yuxi.utils.paths import VIRTUAL_PATH_UPLOADS
 from yuxi.utils.upload_utils import read_upload_with_limit, write_upload_to_path
@@ -433,8 +433,8 @@ async def create_thread_view(
         "uid": conversation.uid,
         "agent_id": conversation.agent_id,
         "title": conversation.title,
-        "created_at": conversation.created_at.isoformat(),
-        "updated_at": conversation.updated_at.isoformat(),
+        "created_at": format_naive_utc_datetime(conversation.created_at),
+        "updated_at": format_naive_utc_datetime(conversation.updated_at),
         "metadata": conversation.extra_metadata or {},
     }
 
@@ -464,8 +464,8 @@ async def list_threads_view(
             "agent_id": conv.agent_id,
             "title": conv.title,
             "is_pinned": bool(conv.is_pinned),
-            "created_at": conv.created_at.isoformat(),
-            "updated_at": conv.updated_at.isoformat(),
+            "created_at": format_naive_utc_datetime(conv.created_at),
+            "updated_at": format_naive_utc_datetime(conv.updated_at),
             "metadata": conv.extra_metadata or {},
         }
         for conv in conversations
@@ -502,7 +502,7 @@ async def search_threads_view(
             {
                 "message_id": snippet.get("message_id"),
                 "content": snippet.get("content") or "",
-                "created_at": format_utc_datetime(snippet.get("created_at")),
+                "created_at": format_naive_utc_datetime(snippet.get("created_at")),
             }
             for snippet in item.get("snippets", [])
         ]
@@ -514,12 +514,12 @@ async def search_threads_view(
                 "agent_id": conv.agent_id,
                 "title": conv.title,
                 "is_pinned": bool(conv.is_pinned),
-                "created_at": format_utc_datetime(conv.created_at),
-                "updated_at": format_utc_datetime(conv.updated_at),
+                "created_at": format_naive_utc_datetime(conv.created_at),
+                "updated_at": format_naive_utc_datetime(conv.updated_at),
                 "metadata": conv.extra_metadata or {},
                 "matched_count": item.get("matched_count", 0),
                 "message_id": item.get("message_id"),
-                "latest_match_at": format_utc_datetime(item.get("latest_match_at")),
+                "latest_match_at": format_naive_utc_datetime(item.get("latest_match_at")),
                 "snippets": snippets,
             }
         )
@@ -560,8 +560,8 @@ async def update_thread_view(
         "agent_id": updated_conv.agent_id,
         "title": updated_conv.title,
         "is_pinned": bool(updated_conv.is_pinned),
-        "created_at": updated_conv.created_at.isoformat(),
-        "updated_at": updated_conv.updated_at.isoformat(),
+        "created_at": format_naive_utc_datetime(updated_conv.created_at),
+        "updated_at": format_naive_utc_datetime(updated_conv.updated_at),
         "metadata": updated_conv.extra_metadata or {},
     }
 
@@ -934,7 +934,7 @@ async def get_thread_history_view(
                         "id": feedback.id,
                         "rating": feedback.rating,
                         "reason": feedback.reason,
-                        "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+                        "created_at": format_naive_utc_datetime(feedback.created_at),
                     }
                     break
 
@@ -947,7 +947,7 @@ async def get_thread_history_view(
             "id": msg.id,
             "type": role_type_map.get(msg.role, msg.role),
             "content": msg.content,
-            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            "created_at": format_naive_utc_datetime(msg.created_at),
             "run_id": msg.run_id,
             "request_id": msg.request_id,
             "delivery_status": msg.delivery_status,

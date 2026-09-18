@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any
+from typing import Any, NamedTuple
 
 from yuxi.knowledge.graphs.graph_utils import normalize_entity_name
 
@@ -20,8 +20,27 @@ class GraphExtractor(ABC):
     def validate_options(self) -> None:
         return None
 
+    def resolved_domain(self, chunk_metadata: dict[str, Any] | None = None) -> str:
+        """该块文本适用的抽取域。
 
-def normalize_extraction_result(result: dict[str, Any], extractor_type: str) -> dict[str, Any]:
+        基类只认知识库级配置。支持文件级覆盖的抽取器重写这个方法——
+        调用方（构建流程）不必知道覆盖规则长什么样。
+        """
+        from .domains import normalize_domain
+
+        return normalize_domain(self.options.get("domain"))
+
+
+def normalize_extraction_result(
+    result: dict[str, Any],
+    extractor_type: str,
+    *,
+    domain: object = None,
+) -> dict[str, Any]:
+    """归一化抽取结果；给了域就按该域的白名单过滤。
+
+    ``domain`` 为 None 或为空串表示通用抽取——不校验，因为此时确实没有本体可依。
+    """
     if not isinstance(result, dict):
         raise ValueError("extraction_result 必须是对象")
 
@@ -80,14 +99,99 @@ def normalize_extraction_result(result: dict[str, Any], extractor_type: str) -> 
             }
         )
 
+    verdict = _apply_ontology(list(normalized_entities_by_key.values()), normalized_relations, domain)
+
     metadata = dict(result.get("metadata") or {})
     metadata.setdefault("extractor_type", extractor_type)
     metadata.setdefault("schema_version", 1)
+    if verdict.domain:
+        # 只在**真在校验**的时候写这段。通用域下没有白名单，
+        # 报一个 dropped=0 会让人误以为"校验过了"，那是假的安心。
+        metadata["ontology"] = {
+            "domain": verdict.domain,
+            "dropped_entities": verdict.dropped_entities,
+            "dropped_relations": verdict.dropped_relations,
+            "unknown_labels": verdict.unknown_labels,
+        }
     return {
-        "entities": list(normalized_entities_by_key.values()),
-        "relations": normalized_relations,
+        "entities": verdict.entities,
+        "relations": verdict.relations,
         "metadata": metadata,
     }
+
+
+class OntologyVerdict(NamedTuple):
+    """白名单过滤的结果。
+
+    ``domain`` 为空串表示**没有校验**（通用抽取）——调用方据此区分
+    "校验通过、零丢弃"和"压根没校验"，这两件事在指标上必须分开看。
+    """
+
+    domain: str
+    entities: list[dict[str, Any]]
+    relations: list[dict[str, Any]]
+    dropped_entities: int
+    dropped_relations: int
+    unknown_labels: list[str]
+
+
+def _apply_ontology(entities: list[dict[str, Any]],
+                    relations: list[dict[str, Any]],
+                    domain: object) -> OntologyVerdict:
+    """按域白名单过滤，并如实报告丢掉了什么。
+
+    **丢，而不是收下**：本体的全部价值在于图上的 label 是可枚举、可查询的。
+    把模型现编的 label 一并入库，本体就只是 prompt 里的一段装饰文字，
+    而且这种"退化"在图上完全看不出来。
+
+    **丢，但不静默**：计数与具体 label 名一并回传，随 chunk 的 extraction_result
+    落库，再配合调用方的 WARNING 日志，才能回答"本体到底拦掉了多少"。
+    这里刻意不抛异常——一个越界 label 不该让整块文本的抽取全部报废。
+
+    **关系跟着实体一起丢**：实体被摘掉后关系还留着，图上就会出现指向不存在节点的
+    悬空边，PPR 遍历时是纯粹的噪声。
+    """
+    from .domains import domain_ontology, normalize_domain
+
+    canonical = normalize_domain(domain)
+    allowed_labels, allowed_relations = domain_ontology(canonical)
+    if not allowed_labels and not allowed_relations:
+        return OntologyVerdict(canonical, entities, relations, 0, 0, [])
+
+    label_set = set(allowed_labels)
+    relation_set = set(allowed_relations)
+    unknown: list[str] = []
+
+    def note(label: str) -> None:
+        if label not in unknown:
+            unknown.append(label)
+
+    kept_entities: list[dict[str, Any]] = []
+    survivors: set[int] = set()
+    for entity in entities:
+        if entity["label"] in label_set:
+            kept_entities.append(entity)
+            survivors.add(id(entity))
+        else:
+            note(entity["label"])
+
+    kept_relations: list[dict[str, Any]] = []
+    for relation in relations:
+        if relation["label"] not in relation_set:
+            note(relation["label"])
+            continue
+        if id(relation["source"]) not in survivors or id(relation["target"]) not in survivors:
+            continue
+        kept_relations.append(relation)
+
+    return OntologyVerdict(
+        domain=canonical,
+        entities=kept_entities,
+        relations=kept_relations,
+        dropped_entities=len(entities) - len(kept_entities),
+        dropped_relations=len(relations) - len(kept_relations),
+        unknown_labels=unknown,
+    )
 
 
 def _normalize_relation_endpoint(

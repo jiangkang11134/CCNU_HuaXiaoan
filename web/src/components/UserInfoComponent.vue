@@ -33,6 +33,10 @@
             </div>
           </a-menu-item>
           <a-menu-divider />
+          <a-menu-item key="memory" @click="openMemory">
+            <template #icon><Brain :size="16" /></template>
+            <span class="menu-text">我的记忆</span>
+          </a-menu-item>
           <a-menu-item key="theme" @click="toggleTheme">
             <template #icon>
               <Sun v-if="themeStore.isDark" :size="16" />
@@ -50,7 +54,7 @@
       </template>
     </a-dropdown>
     <a-button v-else-if="showButton" type="primary" @click="goToLogin"> 登录 </a-button>
-    <PersonalSettingsModal v-model:open="personalSettingsOpen" />
+    <PersonalSettingsModal v-model:open="personalSettingsOpen" :initial-tab="personalSettingsTab" />
   </div>
 </template>
 
@@ -59,7 +63,7 @@ import { computed, ref, useSlots } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { message } from 'ant-design-vue'
-import { Sun, Moon, LogOut } from 'lucide-vue-next'
+import { Brain, Sun, Moon, LogOut } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/theme'
 import { generatePixelAvatar } from '@/utils/pixelAvatar'
 import FallbackAvatar from '@/components/common/FallbackAvatar.vue'
@@ -71,6 +75,7 @@ const userStore = useUserStore()
 const themeStore = useThemeStore()
 const slots = useSlots()
 const personalSettingsOpen = ref(false)
+const personalSettingsTab = ref('account')
 
 const avatarDefaultSrc = computed(() => (userStore.uid ? generatePixelAvatar(userStore.uid) : ''))
 
@@ -114,6 +119,14 @@ const toggleTheme = () => {
 }
 
 const openProfile = () => {
+  personalSettingsTab.value = 'account'
+  personalSettingsOpen.value = true
+}
+
+// 用户菜单里的「我的记忆」直达：长期记忆对用户是黑盒，必须有个一眼可见的入口，
+// 否则"系统记了什么、能不能改"只能靠猜。
+const openMemory = () => {
+  personalSettingsTab.value = 'myMemory'
   personalSettingsOpen.value = true
 }
 </script>

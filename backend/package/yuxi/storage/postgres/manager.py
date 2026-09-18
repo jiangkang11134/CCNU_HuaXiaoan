@@ -123,6 +123,106 @@ class PostgresManager(metaclass=SingletonMeta):
         """确保知识库 schema 包含所有必要字段"""
         self._check_initialized()
         stmts = [
+            """
+            CREATE TABLE IF NOT EXISTS session_facts (
+                id SERIAL PRIMARY KEY, uid VARCHAR NOT NULL, thread_id VARCHAR NOT NULL,
+                fact_key VARCHAR(128) NOT NULL, content TEXT NOT NULL,
+                status VARCHAR(24) NOT NULL DEFAULT 'active', source_request_id VARCHAR(128),
+                scope VARCHAR(64) NOT NULL DEFAULT 'thread', tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+                expires_at TIMESTAMPTZ, supersedes_id INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS user_memory_facts (
+                id SERIAL PRIMARY KEY, uid VARCHAR NOT NULL, fact_key VARCHAR(128) NOT NULL,
+                content TEXT NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'candidate',
+                confidence DOUBLE PRECISION NOT NULL DEFAULT 0, source_request_id VARCHAR(128),
+                scope VARCHAR(64) NOT NULL DEFAULT 'user', tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+                graph_query_role VARCHAR(32) NOT NULL DEFAULT 'personalize',
+                entity_hints JSONB NOT NULL DEFAULT '[]'::jsonb, intent_hints JSONB NOT NULL DEFAULT '[]'::jsonb,
+                domain_scope VARCHAR(64) NOT NULL DEFAULT 'general', expires_at TIMESTAMPTZ,
+                supersedes_id INTEGER, confirmed_at TIMESTAMPTZ, confirmed_by VARCHAR(64),
+                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS correction_tickets (
+                id SERIAL PRIMARY KEY, uid VARCHAR NOT NULL, thread_id VARCHAR(128),
+                source_request_id VARCHAR(128) UNIQUE, original_content TEXT NOT NULL,
+                proposed_content TEXT NOT NULL, reviewed_content TEXT,
+                status VARCHAR(24) NOT NULL DEFAULT 'pending',
+                reviewer_uid VARCHAR(128), review_note TEXT, target_type VARCHAR(32) NOT NULL DEFAULT 'answer',
+                target_id VARCHAR(128), kb_id VARCHAR(80), risk_level VARCHAR(16) NOT NULL DEFAULT 'medium',
+                applied_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS memory_events (
+                id SERIAL PRIMARY KEY, event_id VARCHAR(64) NOT NULL UNIQUE, uid VARCHAR NOT NULL,
+                target_type VARCHAR(32) NOT NULL, target_id INTEGER NOT NULL, event_type VARCHAR(32) NOT NULL,
+                before_status VARCHAR(32), after_status VARCHAR(32), payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                actor_type VARCHAR(32) NOT NULL DEFAULT 'system', actor_id VARCHAR(64), request_id VARCHAR(128),
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS memory_extract_cursors (
+                id SERIAL PRIMARY KEY, uid VARCHAR NOT NULL, thread_id VARCHAR NOT NULL UNIQUE,
+                last_run_id VARCHAR(64), last_run_created_at TIMESTAMPTZ, last_extracted_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_memory_extract_cursors_uid ON memory_extract_cursors(uid)",
+            "CREATE INDEX IF NOT EXISTS ix_session_facts_uid_thread_status ON session_facts(uid, thread_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_session_facts_expires_at ON session_facts(expires_at)",
+            "CREATE INDEX IF NOT EXISTS ix_user_memory_uid_status ON user_memory_facts(uid, status)",
+            "CREATE INDEX IF NOT EXISTS ix_user_memory_expires_at ON user_memory_facts(expires_at)",
+            "CREATE INDEX IF NOT EXISTS ix_correction_tickets_status ON correction_tickets(status, created_at)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_correction_tickets_source_request ON correction_tickets(source_request_id) WHERE source_request_id IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS ix_memory_events_target ON memory_events(target_type, target_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_memory_events_uid_created ON memory_events(uid, created_at)",
+            "ALTER TABLE IF EXISTS session_facts ADD COLUMN IF NOT EXISTS scope VARCHAR(64) NOT NULL DEFAULT 'thread'",
+            "ALTER TABLE IF EXISTS session_facts ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS session_facts ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS session_facts ADD COLUMN IF NOT EXISTS supersedes_id INTEGER",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS scope VARCHAR(64) NOT NULL DEFAULT 'user'",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS graph_query_role VARCHAR(32) NOT NULL DEFAULT 'personalize'",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS entity_hints JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS intent_hints JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS domain_scope VARCHAR(64) NOT NULL DEFAULT 'general'",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS supersedes_id INTEGER",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS user_memory_facts ADD COLUMN IF NOT EXISTS confirmed_by VARCHAR(64)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS target_type VARCHAR(32) NOT NULL DEFAULT 'answer'",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS target_id VARCHAR(128)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS kb_id VARCHAR(80)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS risk_level VARCHAR(16) NOT NULL DEFAULT 'medium'",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS reviewed_content TEXT",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS applied_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS entity_hints JSONB DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS relation_hints JSONB DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS intent_tags JSONB DEFAULT '[]'::jsonb",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS confidence FLOAT DEFAULT 0.8",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS embedding JSONB",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS needs_review_reason VARCHAR(200)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS needs_review_at TIMESTAMPTZ",
+            "CREATE INDEX IF NOT EXISTS ix_correction_tickets_needs_review ON correction_tickets(needs_review, kb_id)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS rewrite_text TEXT",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS graph_written BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS graph_file_id VARCHAR(64)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS graph_chunk_ids JSONB",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS graph_written_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS retired_at TIMESTAMPTZ",
+            # M1 作用域分层：存量工单沿用 kb_truth（原本就是全局生效，不改变现状）
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS scope VARCHAR(16) NOT NULL DEFAULT 'kb_truth'",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS scope_source VARCHAR(16)",
+            "ALTER TABLE IF EXISTS correction_tickets ADD COLUMN IF NOT EXISTS dept_id INTEGER",
+            "CREATE INDEX IF NOT EXISTS ix_correction_tickets_scope ON correction_tickets(scope)",
             "ALTER TABLE IF EXISTS knowledge_bases ADD COLUMN IF NOT EXISTS embedding_model_spec VARCHAR(512)",
             "ALTER TABLE IF EXISTS knowledge_bases ADD COLUMN IF NOT EXISTS llm_model_spec VARCHAR(512)",
             "ALTER TABLE IF EXISTS knowledge_bases DROP COLUMN IF EXISTS embed_info",
@@ -309,6 +409,10 @@ class PostgresManager(metaclass=SingletonMeta):
             """,
             "ALTER TABLE IF EXISTS knowledge_bases ALTER COLUMN kb_id TYPE VARCHAR(80)",
             "ALTER TABLE IF EXISTS knowledge_files ALTER COLUMN kb_id TYPE VARCHAR(80)",
+            "ALTER TABLE IF EXISTS knowledge_files ADD COLUMN IF NOT EXISTS source_type VARCHAR(32) NOT NULL DEFAULT 'upload'",
+            "CREATE INDEX IF NOT EXISTS idx_kf_source_type ON knowledge_files(source_type)",
+            "ALTER TABLE IF EXISTS knowledge_files ADD COLUMN IF NOT EXISTS doc_domain VARCHAR(32)",
+            "CREATE INDEX IF NOT EXISTS idx_kf_doc_domain ON knowledge_files(doc_domain)",
             "ALTER TABLE IF EXISTS evaluation_datasets ALTER COLUMN kb_id TYPE VARCHAR(80)",
             "ALTER TABLE IF EXISTS evaluation_dataset_items ALTER COLUMN kb_id TYPE VARCHAR(80)",
             "ALTER TABLE IF EXISTS evaluation_runs ALTER COLUMN kb_id TYPE VARCHAR(80)",
@@ -395,6 +499,16 @@ class PostgresManager(metaclass=SingletonMeta):
             "CREATE INDEX IF NOT EXISTS ix_users_is_builtin ON users(is_builtin)",
             "ALTER TABLE IF EXISTS conversations ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS mcp_servers ADD COLUMN IF NOT EXISTS env JSONB",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS reporter_role VARCHAR(32) NOT NULL DEFAULT 'student'",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 50",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS processing_status VARCHAR(32) NOT NULL DEFAULT 'backlog'",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS processing_note TEXT",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS processed_at TIMESTAMPTZ",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS processed_by VARCHAR(64)",
+            "ALTER TABLE IF EXISTS message_feedbacks ADD COLUMN IF NOT EXISTS ticket_id INTEGER",
+            "CREATE INDEX IF NOT EXISTS ix_message_feedback_ticket ON message_feedbacks(ticket_id)",
+            "CREATE INDEX IF NOT EXISTS ix_message_feedback_processing ON message_feedbacks(processing_status, priority, created_at)",
             """
             CREATE TABLE IF NOT EXISTS system_kv (
                 id SERIAL PRIMARY KEY,
@@ -420,7 +534,7 @@ class PostgresManager(metaclass=SingletonMeta):
             CREATE TABLE IF NOT EXISTS user_config (
                 id SERIAL PRIMARY KEY,
                 uid VARCHAR NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
-                enable_memory BOOLEAN NOT NULL DEFAULT FALSE,
+                enable_memory BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 CONSTRAINT uq_user_config_uid UNIQUE (uid)
@@ -449,6 +563,27 @@ class PostgresManager(metaclass=SingletonMeta):
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS share_config JSONB NOT NULL DEFAULT '{}'::jsonb",
             "ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS is_subagent BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS enable_memory BOOLEAN NOT NULL DEFAULT FALSE",
+            # 记忆默认开启（2026-09-16）：存量库里已是 FALSE 的行一次性翻转。
+            # 以"列默认值仍为 false"作为"尚未迁移"的标记，紧随其后的 ALTER 会把它改成 true，
+            # 因此这段 UPDATE 只会生效一次；之后用户再显式关闭不会被重置。
+            """
+            UPDATE user_config SET enable_memory = TRUE
+            WHERE enable_memory = FALSE
+              AND EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'user_config' AND column_name = 'enable_memory'
+                  AND column_default = 'false'
+              )
+            """,
+            "ALTER TABLE IF EXISTS user_config ALTER COLUMN enable_memory SET DEFAULT TRUE",
+            # 个人资料（2026-09-17 新增）。学工号/身份不落在这张表：它们来自注册信息且不可改，
+            # 落在 users.uid / users.business_role，避免同一事实出现两处可写来源。
+            # response_style 默认值与 yuxi.services.user_profile.DEFAULT_RESPONSE_STYLE 一致，
+            # 且刻意是"不注入任何指令"的 normal。
+            "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS full_name VARCHAR(64)",
+            "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS gender VARCHAR(16)",
+            "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS major VARCHAR(64)",
+            "ALTER TABLE IF EXISTS user_config ADD COLUMN IF NOT EXISTS response_style VARCHAR(16) NOT NULL DEFAULT 'normal'",
             """
             UPDATE cli_auth_sessions
             SET api_key_id = NULL

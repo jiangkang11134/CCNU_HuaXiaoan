@@ -289,9 +289,13 @@ const dislikeThisResponse = async (msg) => {
 
 // Submit dislike feedback with reason
 const submitDislikeFeedback = async () => {
+  if (!dislikeReason.value.trim()) {
+    antMessage.warning('请填写具体错误原因')
+    return
+  }
   try {
     submittingFeedback.value = true
-    await agentApi.submitMessageFeedback(msg.value.id, 'dislike', dislikeReason.value || null)
+    await agentApi.submitMessageFeedback(msg.value.id, 'dislike', dislikeReason.value.trim())
 
     feedbackState.hasSubmitted = true
     feedbackState.rating = 'dislike'

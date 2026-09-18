@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import AgentManagePanel from '@/components/model-management/AgentManagePanel.vue'
 import ModelProviderManagePanel from '@/components/model-management/ModelProviderManagePanel.vue'
+import ModelRoutingPanel from '@/components/model-management/ModelRoutingPanel.vue'
 import { useUserStore } from '@/stores/user'
 
 const route = useRoute()
@@ -17,7 +18,7 @@ const providerPanelRef = ref(null)
 
 const modelManageTabs = computed(() => {
   const tabs = [{ key: 'agents', label: '智能体' }]
-  if (userStore.isAdmin) tabs.push({ key: 'providers', label: '模型供应商' })
+  if (userStore.isAdmin) tabs.push({ key: 'providers', label: '模型供应商' }, { key: 'routing', label: '模型路由' })
   return tabs
 })
 
@@ -30,6 +31,7 @@ const activeStats = computed(() => activePanel.value?.stats || {})
 
 const normalizeTab = (tab) => {
   if (tab === 'providers' && userStore.isAdmin) return 'providers'
+  if (tab === 'routing' && userStore.isAdmin) return 'routing'
   return 'agents'
 }
 
@@ -87,6 +89,9 @@ watch(activeTab, (tab) => {
       </div>
       <div v-if="userStore.isAdmin && activeTab === 'providers'" class="tab-panel">
         <ModelProviderManagePanel ref="providerPanelRef" />
+      </div>
+      <div v-if="userStore.isAdmin && activeTab === 'routing'" class="tab-panel routing-tab">
+        <ModelRoutingPanel />
       </div>
     </div>
   </div>

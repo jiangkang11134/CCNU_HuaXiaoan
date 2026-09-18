@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from yuxi.knowledge.graphs.extractors import (
+    GraphExtractor,
     GraphExtractorFactory,
     LLMGraphExtractor,
     normalize_extraction_result,
@@ -246,15 +247,31 @@ async def test_milvus_graph_service_build_pending_chunks_skips_failed_chunks_in_
         async def insert_missing_graph_records(self, **kwargs):
             return None
 
-    class Extractor:
+    class Extractor(GraphExtractor):
+        """继承真实基类，而不是照着感觉手写一个替身。
+
+        抽取链路上服务端还会调 `resolved_domain()`；替身没跟上时，这个用例
+        会以「建图失败」的样子红掉，归因看起来像服务端的 bug，很难想到是替身。
+        继承基类之后，接口新增会被替身自动继承。
+        """
+
         extractor_type = "llm"
 
-        async def extract(self, content, chunk_metadata=None):
+        async def extract(self, text, *, chunk_metadata=None):
             if chunk_metadata["chunk_id"] == "chunk_fail":
                 raise RuntimeError("extract failed")
             return {"entities": [{"text": "成功实体"}], "relations": []}
 
     monkeypatch.setattr(GraphExtractorFactory, "create", lambda extractor_type, options: Extractor())
+    # 写图要连真 Neo4j，而这个用例考的是「失败块下一轮不再被取到」，不是写图本身。
+    # 不打桩的话它会以「Chunk 图谱构建失败」的样子红掉，归因看起来像批处理有 bug。
+    # 这里刻意返回空实体：非空会让 seen_entity_names 非空，进而触发 P3 复核钩子去连库，
+    # 那是另一个关注点，实体落库路径由本文件的其它用例覆盖。
+    monkeypatch.setattr(
+        MilvusGraphService,
+        "write_chunk_graph",
+        lambda self, kb_id, chunk, normalized_result: ([], []),
+    )
 
     service = MilvusGraphService(
         kb_repo=KbRepo(),

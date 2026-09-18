@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -37,6 +38,7 @@ class ModelInfo:
     # 可选配置
     headers: dict[str, str] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
+    accounts: tuple[dict[str, Any], ...] = field(default_factory=tuple)
 
     # Embedding 专属
     dimension: int | None = None
@@ -57,6 +59,7 @@ class ModelInfo:
             "provider_type": self.provider_type,
             "headers": self.headers,
             "extra": self.extra,
+            "accounts": list(self.accounts),
             "dimension": self.dimension,
             "batch_size": self.batch_size,
         }
@@ -73,6 +76,7 @@ class ModelInfo:
             provider_type=data["provider_type"],
             headers=data.get("headers", {}),
             extra=data.get("extra", {}),
+            accounts=tuple(data.get("accounts", [])),
             dimension=data.get("dimension"),
             batch_size=data.get("batch_size", 40),
         )
@@ -156,6 +160,7 @@ class ModelCache:
                     provider_type=provider.provider_type,
                     headers=dict(provider.headers_json or {}),
                     extra=dict(provider.extra_json or {}),
+                    accounts=tuple(provider.accounts_json or []),
                     dimension=model.get("dimension"),
                     batch_size=model.get("batch_size", 40),
                 )

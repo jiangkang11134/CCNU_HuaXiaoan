@@ -19,7 +19,7 @@ from server.utils.auth_middleware import get_admin_user, get_db
 from yuxi.repositories.agent_repository import AgentRepository
 from yuxi.repositories.conversation_repository import ConversationRepository
 from yuxi.storage.postgres.models_business import User
-from yuxi.utils.datetime_utils import UTC, ensure_shanghai, shanghai_now, utc_now
+from yuxi.utils.datetime_utils import UTC, ensure_shanghai, format_naive_utc_datetime, shanghai_now, utc_now
 from yuxi.utils.logging_config import logger
 
 
@@ -167,8 +167,8 @@ async def get_all_conversations(
                 "title": conv.title,
                 "status": conv.status,
                 "message_count": stats.message_count if stats else 0,
-                "created_at": conv.created_at.isoformat(),
-                "updated_at": conv.updated_at.isoformat(),
+                "created_at": format_naive_utc_datetime(conv.created_at),
+                "updated_at": format_naive_utc_datetime(conv.updated_at),
             }
             for conv, stats in results
         ]
@@ -204,7 +204,7 @@ async def get_conversation_detail(
                 "role": msg.role,
                 "content": msg.content,
                 "message_type": msg.message_type,
-                "created_at": msg.created_at.isoformat(),
+                "created_at": format_naive_utc_datetime(msg.created_at),
             }
 
             # Include tool calls if present
@@ -229,8 +229,8 @@ async def get_conversation_detail(
             "title": conversation.title,
             "status": conversation.status,
             "message_count": stats.message_count if stats else len(message_list),
-            "created_at": conversation.created_at.isoformat(),
-            "updated_at": conversation.updated_at.isoformat(),
+            "created_at": format_naive_utc_datetime(conversation.created_at),
+            "updated_at": format_naive_utc_datetime(conversation.updated_at),
             "total_tokens": stats.total_tokens if stats else 0,
             "messages": message_list,
         }
@@ -646,12 +646,20 @@ class FeedbackListItem(BaseModel):
     """反馈列表项"""
 
     id: int
+    message_id: int | None = None
     uid: str
     username: str | None
     avatar: str | None
     rating: str
     reason: str | None
     created_at: str
+    reporter_role: str | None = None
+    processing_status: str | None = None
+    priority: int | None = None
+    processing_note: str | None = None
+    processed_by: str | None = None
+    processed_at: str | None = None
+    ticket_id: int | None = None
     message_content: str
     conversation_title: str | None
     agent_id: str
@@ -661,6 +669,7 @@ class FeedbackListItem(BaseModel):
 async def get_all_feedbacks(
     rating: str | None = None,
     agent_id: str | None = None,
+    processing_status: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ):
@@ -680,6 +689,9 @@ async def get_all_feedbacks(
             query = query.filter(MessageFeedback.rating == rating)
         if agent_id:
             query = query.filter(Conversation.agent_id == agent_id)
+        if processing_status:
+            # 处置队列筛选：管理员最常看的是"还没处置完的"，见 FEEDBACK_STATUSES
+            query = query.filter(MessageFeedback.processing_status == processing_status)
 
         # Order by creation time (most recent first)
         query = query.order_by(MessageFeedback.created_at.desc())
@@ -700,7 +712,17 @@ async def get_all_feedbacks(
                 "avatar": user.avatar if user else None,
                 "rating": feedback.rating,
                 "reason": feedback.reason,
-                "created_at": feedback.created_at.isoformat(),
+                # 这里原来是裸 .isoformat()：列是 naive UTC 时输出没有时区标记的串，
+                # 前端 dayjs 会当成**本地**时间渲染 → 偏早 8 小时。处置队列要按时间
+                # 判断反馈新旧，所以走 format_naive_utc_datetime（只补标记、不偏移）。
+                "created_at": format_naive_utc_datetime(feedback.created_at) or "",
+                "reporter_role": feedback.reporter_role,
+                "processing_status": feedback.processing_status,
+                "priority": feedback.priority,
+                "processing_note": feedback.processing_note,
+                "processed_by": feedback.processed_by,
+                "processed_at": format_naive_utc_datetime(feedback.processed_at),
+                "ticket_id": feedback.ticket_id,
                 "message_content": message.content,
                 "conversation_title": conversation.title,
                 "agent_id": conversation.agent_id,
@@ -711,6 +733,124 @@ async def get_all_feedbacks(
         logger.error(f"Error getting feedbacks: {e}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Failed to get feedbacks: {str(e)}")
+
+
+class FeedbackStatusOption(BaseModel):
+    """处置状态选项（值 + 中文标签）。"""
+
+    value: str
+    label: str
+
+
+@dashboard.get("/feedbacks/statuses", response_model=list[FeedbackStatusOption])
+async def get_feedback_statuses(current_user: User = Depends(get_admin_user)):
+    """反馈处置状态的唯一口径。
+
+    前端不要自己硬编码这套词表——后端加状态时前端会自动跟上。
+    """
+    from yuxi.services.feedback_service import FEEDBACK_STATUS_LABELS, FEEDBACK_STATUSES
+
+    return [
+        {"value": status, "label": FEEDBACK_STATUS_LABELS.get(status, status)}
+        for status in FEEDBACK_STATUSES
+    ]
+
+
+class FeedbackUpdateRequest(BaseModel):
+    """反馈处置请求。三个字段都可省略，只改传了的那些。"""
+
+    processing_status: str | None = None
+    priority: int | None = None
+    processing_note: str | None = None
+
+
+class FeedbackUpdateResponse(BaseModel):
+    id: int
+    processing_status: str
+    priority: int
+    processing_note: str | None = None
+    processed_by: str | None = None
+    processed_at: str | None = None
+    ticket_id: int | None = None
+
+
+@dashboard.put("/feedbacks/{feedback_id}", response_model=FeedbackUpdateResponse)
+async def update_feedback(
+    feedback_id: int,
+    payload: FeedbackUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """管理员处置一条反馈（改状态 / 优先级 / 备注）。
+
+    反馈是收集层、工单是处置层：学生的点踩不会自动建单，只能由管理员在这里
+    决定是驳回、标记已处理，还是转成纠错工单（另见 POST .../ticket）。
+    """
+    from yuxi.services.feedback_service import update_feedback_processing
+
+    row = await update_feedback_processing(
+        db=db,
+        feedback_id=feedback_id,
+        actor_uid=str(current_user.uid),
+        processing_status=payload.processing_status,
+        priority=payload.priority,
+        processing_note=payload.processing_note,
+    )
+    return {
+        "id": row.id,
+        "processing_status": row.processing_status,
+        "priority": row.priority,
+        "processing_note": row.processing_note,
+        "processed_by": row.processed_by,
+        "processed_at": format_naive_utc_datetime(row.processed_at),
+        "ticket_id": row.ticket_id,
+    }
+
+
+class FeedbackTicketRequest(BaseModel):
+    """转工单请求。``scope`` 省略时由后端按内容自动判定。"""
+
+    scope: str | None = None
+    note: str | None = None
+
+
+class FeedbackTicketResponse(BaseModel):
+    id: int
+    ticket_id: int
+    processing_status: str
+    processing_note: str | None = None
+    scope: str | None = None
+
+
+@dashboard.post("/feedbacks/{feedback_id}/ticket", response_model=FeedbackTicketResponse)
+async def create_feedback_ticket(
+    feedback_id: int,
+    payload: FeedbackTicketRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+):
+    """把一条反馈转成待审核纠错工单（管理员权限）。
+
+    这是"反馈 → 工单"两层之间的人工闸门。工单只会停在 pending，
+    不影响任何线上回答；是否采纳仍由审核环节决定。
+    """
+    from yuxi.services.feedback_service import convert_feedback_to_ticket
+
+    body = payload or FeedbackTicketRequest()
+    row, ticket_id = await convert_feedback_to_ticket(
+        db=db,
+        feedback_id=feedback_id,
+        actor_uid=str(current_user.uid),
+        scope=body.scope,
+        note=body.note,
+    )
+    return {
+        "id": row.id,
+        "ticket_id": ticket_id,
+        "processing_status": row.processing_status,
+        "processing_note": row.processing_note,
+        "scope": getattr(row, "scope", None),
+    }
 
 
 # =============================================================================

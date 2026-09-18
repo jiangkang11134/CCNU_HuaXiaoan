@@ -31,6 +31,8 @@ class KnowledgeFileRepository:
         "chunk_count",
         "token_count",
         "content_type",
+        "source_type",
+        "doc_domain",
         "processing_params",
         "is_folder",
         "error_message",
@@ -72,6 +74,49 @@ class KnowledgeFileRepository:
                 result = await session.execute(select(KnowledgeFile).where(KnowledgeFile.file_id.in_(batch)))
                 records_by_id.update({record.file_id: record for record in result.scalars().all()})
         return [records_by_id[file_id] for file_id in normalized_ids if file_id in records_by_id]
+
+    async def get_domain_by_file_ids(self, *, kb_id: str) -> dict[str, str]:
+        """该知识库下"文件 → 抽取域"的覆盖表；只含确实配了域的文件。
+
+        图谱构建开始时一次性取回，避免每块文本都查一次库。
+        返回空 dict 是正常情况（所有文件都跟随知识库级域）。
+        """
+        async with pg_manager.get_async_session_context() as session:
+            result = await session.execute(
+                select(KnowledgeFile.file_id, KnowledgeFile.doc_domain).where(
+                    KnowledgeFile.kb_id == kb_id,
+                    KnowledgeFile.doc_domain.is_not(None),
+                    KnowledgeFile.doc_domain != "",
+                )
+            )
+            return {str(file_id): str(domain) for file_id, domain in result.all() if file_id and domain}
+
+    async def set_doc_domain(self, *, kb_id: str, file_ids: list[str], doc_domain: str | None) -> int:
+        """给一批文件设置/清除抽取域，返回实际改动的行数。
+
+        **非法域直接抛 ValueError**，且不写任何一行——不是"跳过坏值、改好的那些"。
+        批量接口里做部分成功最糟：调用方拿到一个数字，无从判断哪些没生效。
+        """
+        from yuxi.knowledge.graphs.extractors.domains import normalize_domain
+
+        canonical = normalize_domain(doc_domain)
+        normalized_ids = [str(file_id).strip() for file_id in (file_ids or []) if str(file_id).strip()]
+        if not normalized_ids:
+            return 0
+
+        # 空串落库为 NULL：查询侧只按"非空"筛选，两者等价，
+        # 但 NULL 更准确地表达"没有覆盖"，也避免空串参与索引。
+        value = canonical or None
+        changed = 0
+        async with pg_manager.get_async_session_context() as session:
+            for batch in self._iter_batches(normalized_ids):
+                result = await session.execute(
+                    update(KnowledgeFile)
+                    .where(KnowledgeFile.kb_id == kb_id, KnowledgeFile.file_id.in_(batch))
+                    .values(doc_domain=value, updated_at=utc_now_naive())
+                )
+                changed += int(result.rowcount or 0)
+        return changed
 
     async def list_by_kb_id(self, kb_id: str) -> list[KnowledgeFile]:
         async with pg_manager.get_async_session_context() as session:

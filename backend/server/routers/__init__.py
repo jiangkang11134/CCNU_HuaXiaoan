@@ -11,7 +11,9 @@ from server.routers.dashboard_router import dashboard
 from server.routers.filesystem_router import filesystem_router
 from server.routers.mcp_router import mcp
 from server.routers.mention_router import mention_router
+from server.routers.memory_router import memory_router
 from server.routers.model_provider_router import model_providers
+from server.routers.self_evolution_router import self_evolution_router
 from server.routers.skill_router import skills, user_skills
 from server.routers.system_router import system
 from server.routers.system_task_router import tasks
@@ -41,6 +43,9 @@ router.include_router(tools)  # /api/system/tools/* 工具列表与配置
 router.include_router(user_router)  # /api/user/* 用户级配置与凭据
 router.include_router(filesystem_router)  # /api/viewer/filesystem/* 工作台文件系统视图
 router.include_router(mention_router)  # /api/mention/* 提及文件搜索接口
+
+router.include_router(memory_router)  # /api/memory/* 会话事实与长期记忆（「我的记忆」）
+router.include_router(self_evolution_router)  # /api/self-evolution/* 纠错工单（自进化闭环）
 
 if not _LITE_MODE:
     from server.routers.graph_router import graph

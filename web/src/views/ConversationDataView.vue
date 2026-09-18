@@ -2,6 +2,10 @@
   <div class="conversation-data-view">
     <PageHeader title="对话数据" :loading="loading" :show-border="true">
       <template #actions>
+        <a-button class="lucide-icon-btn" @click="openMemories">
+          <Brain :size="14" />
+          记忆审计
+        </a-button>
         <a-button class="lucide-icon-btn" @click="openFeedbacks">
           <MessageSquareWarning :size="14" />
           反馈记录
@@ -77,17 +81,19 @@
     </a-modal>
 
     <FeedbackModalComponent ref="feedbackModal" />
+    <MemoryAuditModal ref="memoryAuditModal" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { MessageSquareWarning, RefreshCw } from 'lucide-vue-next'
+import { Brain, MessageSquareWarning, RefreshCw } from 'lucide-vue-next'
 import { dashboardApi } from '@/apis/dashboard_api'
 import PageHeader from '@/components/shared/PageHeader.vue'
 import PageShoulder from '@/components/shared/PageShoulder.vue'
 import FeedbackModalComponent from '@/components/dashboard/FeedbackModalComponent.vue'
+import MemoryAuditModal from '@/components/dashboard/MemoryAuditModal.vue'
 import dayjs from '@/utils/time'
 
 const loading = ref(false)
@@ -96,6 +102,7 @@ const detailOpen = ref(false)
 const conversations = ref([])
 const selectedDetail = ref(null)
 const feedbackModal = ref(null)
+const memoryAuditModal = ref(null)
 
 const filters = reactive({
   uid: '',
@@ -163,6 +170,10 @@ const openDetail = async (record) => {
 
 const openFeedbacks = () => {
   feedbackModal.value?.show()
+}
+
+const openMemories = () => {
+  memoryAuditModal.value?.show()
 }
 
 const handleTableChange = (nextPagination) => {

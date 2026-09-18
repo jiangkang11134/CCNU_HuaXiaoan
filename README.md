@@ -251,3 +251,37 @@ docker compose up --build
 ## 许可证
 
 查看 [LICENSE](LICENSE) 文件。
+
+## t26.9.18 四模块更新
+
+本轮对四个核心模块（知识图谱 / 记忆与上下文 / 自进化 / 个性化）做了实现补全与缺陷修复，并同步更新了两份说明文档。
+
+### 知识图谱
+- 抽取域收口到 `knowledge/graphs/extractors/domains.py`：未知域直接 raise（不静默回落到 generic），支持文件级域路由（`knowledge_files.doc_domain`，文件覆盖知识库）。
+- 三族本体已建且白名单真拦截：`chemical` 11 节点 / 13 关系、`laboratory_management` 11 / 10、`policy` 8 / 10；越界实体连同其关系一并丢弃。
+- 化学族补 MSDS 字段规则：新增 `PhysicalProperty` 节点承接「三、理化特性」；问号是来源标注而非「无数据」；平台元数据全部丢弃。
+- 解析层：`docx` / `pptx` 内嵌图片纳入 OCR（原先只覆盖 PDF 页面与独立图片），识别失败不打断解析。
+
+### 记忆与上下文
+- 抽取从回答链路剥离为独立 ARQ 任务，围栏协议已删除；游标以 `agent_runs` 为基准，节流 / `no_content` 不推进游标。
+- 通道与置信度由服务端裁定：稳定的 `user.*` 且置信度 ≥ 0.85 才 `confirmed`，通道只认 `user.*` / `project.*` 前缀。
+- 注入顺序固定为 `[当前可用事实] → [个人资料] → [权威修正]`，`suppressed_fact_keys` 摘掉被个人资料覆盖的长期记忆键。
+- 时间戳修复：全站 naive UTC 列改用 `format_naive_utc_datetime`，结束偏早 8 小时问题（仅 `knowledge/eval` 的 aware 列刻意保留旧函数）。
+
+### 自进化
+- 两层结构：收集层 `message_feedbacks`（所有人可点踩）与处置层 `correction_tickets`（仅 `faculty` / `system_admin` 自动建单）。
+- 作用域分层 `kb_truth` / `user_pref` / `dept_rule` 判定在 `scope.py`，非法取值一律 422 不静默回落。
+- 写回与撤回走统一审计实现 `event_log.record_event`；修正确认写回是唯一能改动知识库的动作。
+- 手写 SQL 的 `text()` 条件必须自带外层括号，防止 `OR` 绕过作用域过滤（M1 红线）。
+
+### 个性化
+- 三层边界：L1 表达层 / L2 检索层可个性化，L3 结论层禁止个性化。
+- 意图 → 回答口径：默认口径任意置信度生效，偏离默认的三个须 ≥ 0.7；阈值闸门写 `not (value >= θ)` 以兼容 JSON `NaN`。
+- 个人资料：`users.uid` / `business_role` 注册不可改，`UserConfigSchema` 用 `extra="forbid"` 返回 422；`response_style=normal` 不产出任何指令。
+
+### 交付文档
+- `四大模块技术方案说明.docx`（教师版 v2）：面向无计算机背景，三套框架 + 大白话。
+- `四大模块技术实现说明.docx`（技术版）：面向后端 / 架构，代码路径 + 阈值 + 否决方案表。
+
+### 验证
+新增回归守卫（时间戳序列化 19 例、内嵌图 OCR 6 例、抽取技能文档漂移 17 例）；全量 `test/unit` 仍维持既有失败基线（deepagents 0.7 API 漂移、缺 `pypdf` / `pymysql` / `langgraph`、Windows symlink、GBK 编码等本机环境问题，与本轮改动无交集）。

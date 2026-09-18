@@ -464,3 +464,51 @@ async def test_worker_startup_ensures_builtin_mcp_servers(monkeypatch: pytest.Mo
         "init_builtin_skills",
         "start_runtime_sync",
     ]
+
+
+# --------------------------------------------------------------------------
+# 记忆抽取任务
+# --------------------------------------------------------------------------
+
+def test_extract_turn_memory_is_registered_by_the_name_callers_enqueue():
+    """入队用的是字符串 "extract_turn_memory"，注册用的是函数名。
+
+    两者不一致时不会有任何报错——任务只是永远躺在 Redis 队列里没人执行，
+    记忆静默地一轮都不抽。所以这里必须钉住"注册名 == 入队名"。
+    """
+    registered = {fn.__name__ for fn in run_worker.WorkerSettings.functions}
+    assert "extract_turn_memory" in registered
+
+
+@pytest.mark.asyncio
+async def test_extract_turn_memory_commits_even_on_failure(monkeypatch: pytest.MonkeyPatch):
+    """抽取失败（``call_failed``）时那条埋点事件也必须落库。
+
+    该分支既没推进游标也没写事实，唯一的痕迹就是埋在 memory_events 里的计数：
+    如果 session 随上下文一起回滚，抽取挂掉这件事就完全是静默的。
+    """
+    from yuxi.memory import extraction as extraction_mod
+
+    commits = {"count": 0}
+
+    class _Session:
+        async def commit(self):
+            commits["count"] += 1
+
+    @asynccontextmanager
+    async def fake_session_ctx():
+        yield _Session()
+
+    seen: list[str] = []
+
+    async def fake_extract(session, thread_id):
+        seen.append(thread_id)
+        return {"status": "call_failed", "call_failed": 1}
+
+    monkeypatch.setattr(run_worker.pg_manager, "get_async_session_context", fake_session_ctx)
+    monkeypatch.setattr(extraction_mod, "extract_pending_turns", fake_extract)
+
+    await run_worker.extract_turn_memory({}, "thread-1")
+
+    assert seen == ["thread-1"]
+    assert commits["count"] == 1

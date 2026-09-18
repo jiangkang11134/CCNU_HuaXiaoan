@@ -48,7 +48,9 @@
       <div class="settings-content-wrapper">
         <div class="settings-content">
           <AccountSettingsComponent v-show="activeTab === 'account'" />
+          <PersonalProfileComponent v-if="activeTab === 'profile'" />
           <UserConfigSettingsCard v-if="activeTab === 'userConfig'" />
+          <MyMemoryPanel v-if="activeTab === 'myMemory'" />
         </div>
       </div>
     </div>
@@ -57,14 +59,21 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { CircleUser, SlidersHorizontal, X } from 'lucide-vue-next'
+import { Brain, CircleUser, IdCard, SlidersHorizontal, X } from 'lucide-vue-next'
 import AccountSettingsComponent from '@/components/AccountSettingsComponent.vue'
+import PersonalProfileComponent from '@/components/PersonalProfileComponent.vue'
 import UserConfigSettingsCard from '@/components/UserConfigSettingsCard.vue'
+import MyMemoryPanel from '@/components/MyMemoryPanel.vue'
 
 const props = defineProps({
   open: {
     type: Boolean,
     default: false,
+  },
+  // 允许外部（如用户菜单的「我的记忆」入口）指定打开时落在哪个分区
+  initialTab: {
+    type: String,
+    default: 'account',
   },
 })
 
@@ -74,7 +83,10 @@ const activeTab = ref('account')
 
 const tabs = [
   { key: 'account', label: '账户设置', icon: CircleUser },
+  // 个人资料排在设置第一位：它是唯一会影响回答内容的板块，比开关更需要被看到
+  { key: 'profile', label: '个人资料', icon: IdCard },
   { key: 'userConfig', label: '用户配置', icon: SlidersHorizontal },
+  { key: 'myMemory', label: '我的记忆', icon: Brain },
 ]
 
 const visible = computed({
@@ -86,7 +98,7 @@ watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
-      activeTab.value = 'account'
+      activeTab.value = props.initialTab || 'account'
     }
   },
 )

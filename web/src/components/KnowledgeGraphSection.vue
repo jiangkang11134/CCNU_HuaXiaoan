@@ -308,6 +308,17 @@
             </div>
           </div>
         </a-form-item>
+        <a-form-item label="抽取域">
+          <a-select
+            v-model:value="graphConfigForm.domain"
+            :options="domainOptions"
+            placeholder="选择抽取域"
+          />
+          <div class="card-helper">
+            域决定抽取时用哪一套节点与关系本体。选“通用”则完全不约束类型，
+            模型编出来的标签会被原样收下；已规划但尚未建立的域不在此列表中。
+          </div>
+        </a-form-item>
         <a-form-item label="模型">
           <ModelSelectorComponent
             :model_spec="graphConfigForm.model_spec"
@@ -503,10 +514,20 @@ watch(
 const graphConfigForm = reactive({
   extractor_type: 'llm',
   model_spec: '',
+  domain: '',
   schema: '',
   concurrency_count: 50,
   model_params_text: ''
 })
+
+// 与后端 domains.valid_domains() 保持一致；'generic' 用空串表达（即不约束）。
+// 后端对未知域会直接返回 400，所以这里不需要在本地兜底校验，只有选项本身。
+const domainOptions = [
+  { value: '', label: '通用（不做领域约束）' },
+  { value: 'chemical', label: '化学品安全' },
+  { value: 'laboratory_management', label: '实验室管理规范' },
+  { value: 'policy', label: '政策法规' }
+]
 
 const graph = reactive(useGraph(graphRef))
 const graphLoaded = ref(false)
@@ -583,6 +604,7 @@ const fillGraphConfigForm = () => {
   const options = config?.extractor_options || {}
   graphConfigForm.extractor_type = 'llm'
   graphConfigForm.model_spec = options.model_spec || configStore.config?.default_model || ''
+  graphConfigForm.domain = options.domain || ''
   graphConfigForm.schema = options.schema || ''
   graphConfigForm.concurrency_count = Number(options.concurrency_count || 50)
   graphConfigForm.model_params_text = options.model_params
@@ -600,9 +622,13 @@ const selectExtractorType = (option) => {
   graphConfigForm.extractor_type = option.value
 }
 
+// 配置接口是**整份替换** extractor_options：这里少带哪个字段，保存后哪个字段就没了。
+// 之前表单没有 domain，于是管理员每次点保存都会把域配置悄悄抹掉，
+// 抽取退回无类型约束的通用 prompt，而界面上看不出任何异常。
 const buildExtractorOptions = () => {
   return {
     model_spec: graphConfigForm.model_spec,
+    domain: graphConfigForm.domain || '',
     schema: graphConfigForm.schema.trim(),
     concurrency_count: graphConfigForm.concurrency_count || 50,
     model_params: parseModelParams()

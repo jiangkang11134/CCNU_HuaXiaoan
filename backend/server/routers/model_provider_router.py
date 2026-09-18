@@ -55,6 +55,7 @@ class ModelProviderPayload(BaseModel):
     enabled_models: list[dict[str, Any]] | None = Field(None, description="已启用模型配置")
     headers_json: dict[str, Any] | None = Field(None, description="额外请求头")
     extra_json: dict[str, Any] | None = Field(None, description="扩展配置")
+    accounts_json: list[dict[str, Any]] | None = Field(None, description="多账号端点池")
     is_enabled: bool | None = Field(None, description="是否启用")
     is_builtin: bool | None = Field(None, description="是否内置")
 

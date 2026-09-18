@@ -132,6 +132,48 @@ class BaseContext:
         metadata={"name": "请求 ID", "configurable": False, "hide": True},
     )
 
+    request_intent: str = field(
+        default="",
+        metadata={
+            "name": "请求意图",
+            "configurable": False,
+            "hide": True,
+            "description": "本轮请求的意图分类结果，由 chat_service 运行时写入，用于驱动回答口径。",
+        },
+    )
+
+    request_intent_confidence: float = field(
+        default=0.0,
+        metadata={
+            "name": "请求意图置信度",
+            "configurable": False,
+            "hide": True,
+            "description": "意图分类的置信度，0~1。低于阈值的分类不应改变回答口径。",
+        },
+    )
+
+    memory_observe: bool = field(
+        default=True,
+        metadata={
+            "name": "观察用户偏好",
+            "configurable": False,
+            "hide": True,
+            "description": "允许主模型在回答末尾以结构化围栏块回报观察到的用户偏好；"
+            "由 chat_service 按系统配置运行时写入，关闭后模型不再输出该块。",
+        },
+    )
+
+    intent_caliber: bool = field(
+        default=True,
+        metadata={
+            "name": "按意图注入回答口径",
+            "configurable": False,
+            "hide": True,
+            "description": "允许按 request_intent 注入对应的回答口径（是否必须检索、能否把用户说法当依据等）；"
+            "由 chat_service 按系统配置运行时写入，关闭后所有意图共用同一套口径。",
+        },
+    )
+
     system_prompt: str = field(
         default="You are a helpful assistant.",
         metadata={"name": "系统提示词", "description": "用来描述智能体的角色和行为", "kind": "prompt"},
