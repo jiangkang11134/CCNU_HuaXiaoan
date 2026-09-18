@@ -8,7 +8,7 @@
 
 **服务器上只需要装 Docker。** Python、Node、PostgreSQL、Redis、Milvus、Neo4j、MinIO 全部由 Docker Compose 拉起，不需要在宿主机单独安装或配置。
 
-⚠️ 注意：仓库 `README.md` 的生产部署示例里写的是 **gitee 地址**（`https://gitee.com/lqxtime/yuxi.git`），那是上游原仓库。**请改用下面的 GitHub 地址**，否则拉到的不是我们的代码。
+**本项目以本仓库为准维护。** 上游 gitee 仓库仅为原始来源，部署与协作统一从上面的 GitHub 地址拉取（`main` 分支）。
 
 ## 二、服务器基础环境
 

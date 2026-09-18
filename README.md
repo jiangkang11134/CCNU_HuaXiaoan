@@ -2,6 +2,9 @@
 
 本项目是面向实验室安全教育场景的知识问答与安全隐患识别平台。系统以前台多普通用户问答、后台单管理员运营管理为核心业务形态，基于 Yuxi 的知识库、智能体、数据看板、用户管理、部门管理和模型管理能力进行了业务整合。
 
+> **权威仓库**：<https://github.com/jiangkang11134/CCNU_HuaXiaoan>（`main` 分支）
+> 本项目以本仓库为准进行维护，部署与协作请统一从这里拉取。
+
 ## 业务逻辑
 
 - 前台只面向普通用户，用户身份收敛为学生、教职工等普通问答用户。
@@ -63,7 +66,7 @@
 set -e
 
 YUXI_DIR="/root/Yuxi"
-YUXI_REPO="https://gitee.com/lqxtime/yuxi.git"
+YUXI_REPO="https://github.com/jiangkang11134/CCNU_HuaXiaoan"
 
 if [ ! -d "$YUXI_DIR/.git" ]; then
   git clone "$YUXI_REPO" "$YUXI_DIR"
