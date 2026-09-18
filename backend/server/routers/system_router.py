@@ -41,6 +41,12 @@ class ModelRoutingPayload(BaseModel):
     # （游标不推进，下一次连批补上）。
     memory_extract_min_interval: int = Field(0, ge=0, le=86400)
     strategy: str = Field("weighted", pattern="^(weighted|round_robin)$")
+    # 主备故障切换：备用模型按列表顺序尝试，主模型调用失败时依次接管。
+    # 这里只存模型 spec（provider_id:model_id）——api_key 绝不能放进本配置，
+    # 因为 GET /model-routing 对所有登录用户开放，会导致密钥泄露。
+    # 每个模型的 base_url / api_key 仍存于其所属供应商配置（管理员可改、接口不回显）。
+    chat_fallback_specs: list[str] = Field(default_factory=list, max_length=3)
+    chat_fallback_enabled: bool = False
 SENSITIVE_CONFIG_FIELDS = frozenset(
     {
         "tavily_api_key",
@@ -191,6 +197,15 @@ async def update_model_routing(payload: ModelRoutingPayload, db: AsyncSession = 
     data = payload.model_dump()
     for key in ("chat_model_spec", "intent_model_spec", "memory_model_spec"):
         if data.get(key) == "": data[key] = None
+    # 备用链清洗：去空白、去重保序。空 spec 会让故障切换链构造出无效模型。
+    cleaned_specs: list[str] = []
+    for item in data.get("chat_fallback_specs") or []:
+        if not isinstance(item, str):
+            continue
+        spec = item.strip()
+        if spec and spec not in cleaned_specs:
+            cleaned_specs.append(spec)
+    data["chat_fallback_specs"] = cleaned_specs
     row = await db.get(SystemKV, MODEL_ROUTING_KEY)
     if row is None:
         row = SystemKV(key=MODEL_ROUTING_KEY, value=data, description="回答模型与前置意图路由模型配置")

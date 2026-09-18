@@ -1,8 +1,10 @@
+import random
 from typing import Any
 
 from langchain.chat_models import BaseChatModel
+from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 
 from yuxi import config as sys_config
 from yuxi.models.providers.cache import model_cache
@@ -24,7 +26,145 @@ def resolve_chat_model_spec(model_spec: str | None, *, fallback: str | None = No
     raise ValueError("model spec 不能为空")
 
 
-def load_chat_model(fully_specified_name: str | None, **kwargs) -> BaseChatModel:
+def resolve_chat_model_chain(
+    primary_spec: str,
+    fallback_specs: list[str] | None = None,
+) -> list[str]:
+    """把主模型与备用模型拼成有序调用链，去重且保持顺序。
+
+    备用只是"主不可用时的替补"，因此主模型即使重复出现在备用列表里也只保留首次出现，
+    空串与空白项直接丢弃。
+    """
+    chain: list[str] = []
+    seen: set[str] = set()
+    for candidate in (primary_spec, *(fallback_specs or [])):
+        if not isinstance(candidate, str):
+            continue
+        spec = candidate.strip()
+        if not spec or spec in seen:
+            continue
+        seen.add(spec)
+        chain.append(spec)
+    return chain
+
+
+class FallbackChatModel(BaseChatModel):
+    """按 spec 顺序故障切换的聊天模型包装器。
+
+    保持 BaseChatModel 身份，使 create_agent 仍能 bind_tools；bind_tools 返回副本
+    而不是"绑定后的单个模型"，否则工具绑定会把整条备用链丢掉。
+
+    流式只在尚未产出第一个 chunk 前切换：已经吐给前端的内容无法撤回，切到备用会造成
+    内容重复，因此一旦有输出就认定该模型可用、不再切换。
+    """
+
+    specs: list[str] = Field(default_factory=list, description="有序模型 spec 链，首个为主模型")
+    tools: Any = Field(default=None, exclude=True, description="待绑定工具，bind_tools 后透传给链上每个模型")
+    tool_kwargs: dict[str, Any] = Field(default_factory=dict, exclude=True)
+    # 构造底层模型时的透传参数（temperature 等），备用模型同样生效，避免主备行为不一致。
+    model_kwargs: Any = Field(default_factory=dict, exclude=True)
+
+    @property
+    def _llm_type(self) -> str:
+        return "chat-model-fallback"
+
+    def _build_models(self) -> list[tuple[str, BaseChatModel]]:
+        """按序构造链上模型，返回 (spec, model) 对。
+
+        单个备用 spec 失效（被删、拼错）时只跳过它，绝不能让坏备用把能用的主模型一起拖挂。
+        """
+        built: list[tuple[str, BaseChatModel]] = []
+        for spec in self.specs:
+            try:
+                model = load_chat_model(spec, **dict(self.model_kwargs or {}))
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"主备切换: 跳过无法加载的模型 {spec}: {e}")
+                continue
+            if self.tools is not None:
+                model = model.bind_tools(self.tools, **self.tool_kwargs)
+            built.append((spec, model))
+        return built
+
+    def bind_tools(self, tools, **kwargs):
+        """绑定工具并保留整条备用链。"""
+        return self.model_copy(update={"tools": tools, "tool_kwargs": dict(kwargs)})
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        last_error: Exception | None = None
+        for position, (spec, model) in enumerate(self._build_models()):
+            try:
+                message = model.invoke(messages, stop=stop, **kwargs)
+            except Exception as e:  # noqa: BLE001 - 故障切换需要逐个吞掉模型失败
+                last_error = e
+                logger.warning(f"主备切换: 模型 {spec} 调用失败，尝试下一个: {e}")
+                continue
+            if position:
+                logger.info(f"主备切换: 已由备用模型 {spec} 接管")
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        raise last_error or RuntimeError("FallbackChatModel 没有可用模型")
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        last_error: Exception | None = None
+        for position, (spec, model) in enumerate(self._build_models()):
+            try:
+                message = await model.ainvoke(messages, stop=stop, **kwargs)
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+                logger.warning(f"主备切换: 模型 {spec} 调用失败，尝试下一个: {e}")
+                continue
+            if position:
+                logger.info(f"主备切换: 已由备用模型 {spec} 接管")
+            return ChatResult(generations=[ChatGeneration(message=message)])
+        raise last_error or RuntimeError("FallbackChatModel 没有可用模型")
+
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        last_error: Exception | None = None
+        for position, (spec, model) in enumerate(self._build_models()):
+            try:
+                iterator = model.stream(messages, stop=stop, **kwargs)
+                first = next(iterator)
+            except StopIteration:
+                return
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+                logger.warning(f"主备切换: 模型 {spec} 流式调用失败，尝试下一个: {e}")
+                continue
+            if position:
+                logger.info(f"主备切换: 已由备用模型 {spec} 接管")
+            yield first
+            yield from iterator
+            return
+        if last_error:
+            raise last_error
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        last_error: Exception | None = None
+        for position, (spec, model) in enumerate(self._build_models()):
+            try:
+                iterator = model.astream(messages, stop=stop, **kwargs)
+                # 复用同一个迭代器：重新调用 astream 会重启生成，导致首 chunk 重复。
+                first = await anext(iterator)
+            except StopAsyncIteration:
+                return
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+                logger.warning(f"主备切换: 模型 {spec} 流式调用失败，尝试下一个: {e}")
+                continue
+            if position:
+                logger.info(f"主备切换: 已由备用模型 {spec} 接管")
+            yield first
+            async for chunk in iterator:
+                yield chunk
+            return
+        if last_error:
+            raise last_error
+
+
+def load_chat_model(
+    fully_specified_name: str | None,
+    fallback_specs: list[str] | None = None,
+    **kwargs,
+) -> BaseChatModel:
     fully_specified_name = resolve_chat_model_spec(fully_specified_name)
 
     info = model_cache.get_model_info(fully_specified_name)
@@ -38,6 +178,11 @@ def load_chat_model(fully_specified_name: str | None, **kwargs) -> BaseChatModel
 
     if info.model_type != "chat":
         raise ValueError(f"Model {fully_specified_name} is not a chat model (type={info.model_type})")
+
+    # 配了备用链就整体交给包装器：由它按序构造并在失败时切换。提前返回避免主模型被构造两次。
+    chain = resolve_chat_model_chain(fully_specified_name, fallback_specs)
+    if len(chain) > 1:
+        return FallbackChatModel(specs=chain, model_kwargs=dict(kwargs))
 
     # 多账号按权重随机选择，单次模型实例固定端点，避免流式请求中途切换。
     endpoint = None

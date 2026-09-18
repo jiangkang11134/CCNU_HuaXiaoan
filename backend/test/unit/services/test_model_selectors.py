@@ -4,7 +4,12 @@ import httpx
 import pytest
 import requests
 
-from yuxi.agents.models import load_chat_model, resolve_chat_model_spec
+from yuxi.agents.models import (
+    FallbackChatModel,
+    load_chat_model,
+    resolve_chat_model_chain,
+    resolve_chat_model_spec,
+)
 from yuxi.models.chat import LangChainChatAdapter, select_model
 from yuxi.models.embed import OtherEmbedding, select_embedding_model
 from yuxi.models.rerank import OpenAIReranker, get_reranker
@@ -235,6 +240,74 @@ def test_openai_payload_bridges_read_file_image_tool_result_to_user_role():
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}},
         ],
     }
+
+
+def test_resolve_chat_model_chain_keeps_order_dedupes_and_drops_blank():
+    assert resolve_chat_model_chain("primary:m", ["backup1:m", "primary:m", "  ", "backup2:m", None]) == [
+        "primary:m",
+        "backup1:m",
+        "backup2:m",
+    ]
+    assert resolve_chat_model_chain(" primary:m ") == ["primary:m"]
+    assert resolve_chat_model_chain("primary:m", []) == ["primary:m"]
+
+
+def test_load_chat_model_returns_plain_model_without_backups(monkeypatch):
+    """回归防护：没配备用时行为必须与改动前完全一致，不能被包装器改变。"""
+    monkeypatch.setattr(
+        "yuxi.agents.models.model_cache.get_model_info",
+        lambda spec: _chat_model_info("openai-compatible", "namespace/chat-model"),
+    )
+
+    model = load_chat_model("openai-compatible:namespace/chat-model", fallback_specs=None)
+
+    assert not isinstance(model, FallbackChatModel)
+
+
+def test_load_chat_model_wraps_backups_into_fallback_chain(monkeypatch):
+    monkeypatch.setattr(
+        "yuxi.agents.models.model_cache.get_model_info",
+        lambda spec: _chat_model_info("openai-compatible", "namespace/chat-model"),
+    )
+
+    model = load_chat_model(
+        "openai-compatible:namespace/chat-model",
+        fallback_specs=["backup-one:m", "backup-two:m"],
+    )
+
+    assert isinstance(model, FallbackChatModel)
+    assert model.specs == ["openai-compatible:namespace/chat-model", "backup-one:m", "backup-two:m"]
+
+
+def test_fallback_chat_model_bind_tools_preserves_whole_chain(monkeypatch):
+    bound = []
+
+    def fake_load(spec, **kwargs):
+        return SimpleNamespace(bind_tools=lambda tools, **kw: bound.append(spec) or SimpleNamespace(spec=spec))
+
+    monkeypatch.setattr("yuxi.agents.models.load_chat_model", fake_load)
+
+    bound_model = FallbackChatModel(specs=["primary:m", "backup:m"]).bind_tools(["tool_a"])
+    pairs = bound_model._build_models()
+
+    # 工具绑定后整条备用链仍在，且每个模型各自完成绑定
+    assert [spec for spec, _ in pairs] == ["primary:m", "backup:m"]
+    assert bound == ["primary:m", "backup:m"]
+
+
+def test_fallback_chat_model_skips_unloadable_backup_without_killing_primary(monkeypatch):
+    """备用 spec 失效只跳过它，绝不能把能用的主模型一起拖挂。"""
+
+    def fake_load(spec, **kwargs):
+        if spec == "broken:m":
+            raise ValueError("未找到模型")
+        return SimpleNamespace(spec=spec)
+
+    monkeypatch.setattr("yuxi.agents.models.load_chat_model", fake_load)
+
+    model = FallbackChatModel(specs=["primary:m", "broken:m", "backup:m"])
+
+    assert [spec for spec, _ in model._build_models()] == ["primary:m", "backup:m"]
 
 
 def test_openai_payload_inserts_tool_image_user_message_after_parallel_tool_block():
