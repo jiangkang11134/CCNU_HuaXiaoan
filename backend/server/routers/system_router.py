@@ -7,6 +7,7 @@ import yaml
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yuxi import config, get_version
 from yuxi.storage.postgres.models_business import SystemKV, User
@@ -29,6 +30,18 @@ from server.utils.frontend_portal_policy import (
 
 system = APIRouter(prefix="/system", tags=["system"])
 MODEL_ROUTING_KEY = "model_routing"
+
+
+async def _get_system_kv(db: AsyncSession, key: str) -> SystemKV | None:
+    """按 key 查询 SystemKV 记录。
+
+    注意：不能写成 db.get(SystemKV, key)——SystemKV 的主键是自增整型 id，
+    按主键取行必须传 int；传字符串 key 会被 asyncpg 拒绝并抛
+    DataError: 'str' object cannot be interpreted as an integer，导致接口 500。
+    """
+    result = await db.execute(select(SystemKV).filter(SystemKV.key == key))
+    return result.scalar_one_or_none()
+
 
 class ModelRoutingPayload(BaseModel):
     chat_model_spec: str | None = Field(None, max_length=200)
@@ -189,7 +202,7 @@ async def update_config_batch(items: dict = Body(...), current_user: User = Depe
 
 @system.get("/model-routing")
 async def get_model_routing(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_required_user)):
-    row = await db.get(SystemKV, MODEL_ROUTING_KEY)
+    row = await _get_system_kv(db, MODEL_ROUTING_KEY)
     return {"success": True, "data": row.value if row and isinstance(row.value, dict) else {"intent_enabled": True, "strategy": "weighted"}}
 
 @system.put("/model-routing")
@@ -206,7 +219,7 @@ async def update_model_routing(payload: ModelRoutingPayload, db: AsyncSession = 
         if spec and spec not in cleaned_specs:
             cleaned_specs.append(spec)
     data["chat_fallback_specs"] = cleaned_specs
-    row = await db.get(SystemKV, MODEL_ROUTING_KEY)
+    row = await _get_system_kv(db, MODEL_ROUTING_KEY)
     if row is None:
         row = SystemKV(key=MODEL_ROUTING_KEY, value=data, description="回答模型与前置意图路由模型配置")
         db.add(row)
