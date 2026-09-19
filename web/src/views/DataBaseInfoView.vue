@@ -219,7 +219,7 @@
             />
           </div>
 
-          <div v-if="isMilvus && activeTab === 'mindmap'" class="tab-panel">
+          <div v-show="isMilvus && activeTab === 'mindmap'" class="tab-panel">
             <MindMapSection v-if="kbId" :kb-id="kbId" ref="mindmapSectionRef" />
           </div>
 

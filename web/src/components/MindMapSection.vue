@@ -31,7 +31,7 @@
       </div>
 
       <!-- 思维导图显示 -->
-      <div v-else class="mindmap-container">
+      <div v-show="!loading && !generating && !!mindmapData" ref="svgContainer" class="mindmap-container">
         <div class="mindmap-toolbar">
           <a-space :size="8">
             <button
@@ -102,10 +102,22 @@ const mindmapData = ref(null)
 const mindmapSvg = ref(null)
 const mindmapDiff = ref(null)
 const isIncremental = ref(false)
+const svgContainer = ref(null)
 let markmapInstance = null
 let textMeasureContext = null
+// 父级 DataBaseInfoView 用 v-show 控制本组件，正常情况下不会被卸载；
+// 但组件仍可能在渲染途中随路由离开而卸载，此时 mindmapSvg 变 null，
+// 异步渲染回调必须据此提前退出，而不是误报"无法找到SVG容器"。
+let isUnmounted = false
+// 当"等待 SVG 容器可用"时，把 resolve 挂在这里；容器一出现（尺寸由 0 变正）就立刻唤醒，
+// 而不是靠定时轮询。key 形如 `svg`（等挂载）/ `size`（等容器有尺寸）。
+let pendingReady = Object.create(null)
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+// 等待容器挂载 / 变为可见的兜底上限。正常路径由 ResizeObserver 立即唤醒，
+// 这两个值只在组件处于异常状态（父级一直隐藏、DOM 未挂载）时才起作用。
+const SVG_MOUNT_TIMEOUT_MS = 10000
+const SVG_VISIBLE_TIMEOUT_MS = 30000
 const MARKMAP_MAX_WIDTH = 200
 const MARKMAP_PADDING_X = 8
 const MARKMAP_LINE_HEIGHT = 20
@@ -295,8 +307,11 @@ const jsonToMarkdown = (node, level = 0) => {
 
 const ensureSvgViewportSize = () => {
   const svg = mindmapSvg.value
+  // 容器从 v-show 的 display:none 恢复时，svg 的 offsetParent 仍是容器本身
+  // （容器不是 display:none 时它才是非 null）。容器被隐藏时 offsetParent 为 null，
+  // 说明此刻就算量到尺寸也不可信，直接返回 false 让调用方继续等。
   const container = svg?.parentElement
-  if (!svg || !container) return false
+  if (!svg || !container || !svg.offsetParent) return false
 
   const { width, height } = container.getBoundingClientRect()
   if (width <= 0 || height <= 0) return false
@@ -306,17 +321,70 @@ const ensureSvgViewportSize = () => {
   return true
 }
 
-const waitForSvgReady = async (maxAttempts = 30) => {
-  await nextTick()
+/**
+ * 唤醒所有在该 key 上等待的调用方。
+ * 由 ResizeObserver / watch 触发，替代定时轮询。
+ */
+const notifyReady = (key) => {
+  const waiters = pendingReady[key]
+  if (!waiters?.length) return
+  pendingReady[key] = []
+  for (const resolve of waiters) resolve()
+}
 
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    await nextTick()
-    if (ensureSvgViewportSize()) {
-      return true
+/**
+ * 用一个 Promise 等待容器就绪，key 决定由谁唤醒：
+ * - `svg`：等待模板里的 mindmap-container 被挂载（mindmapData 由空变非空那一刻）
+ * - `size`：容器已挂载，但尺寸为 0（Tab 被 v-show 隐藏），等 ResizeObserver 报出正尺寸
+ * 超时只是兜底，防止组件处于异常状态时永久挂起。
+ */
+const waitForSignal = (key, timeoutMs) =>
+  new Promise((resolve) => {
+    if (!pendingReady[key]) pendingReady[key] = []
+    const done = () => {
+      pendingReady[key] = pendingReady[key].filter((item) => item !== done)
+      resolve()
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 80))
+    pendingReady[key].push(done)
+    window.setTimeout(done, timeoutMs)
+  })
+
+/**
+ * 等待 SVG 容器可用于渲染。
+ *
+ * 这里的关键事实：容器由 v-show 控制（切 Tab 不卸载组件），
+ * 在 display:none 状态下 getBoundingClientRect() 恒为 {0,0}，
+ * 此时既渲染不了，也不该报错——用户切回来时必须自动补渲染。
+ *
+ * 返回值语义：
+ * - 'ready'    容器可用
+ * - 'unmounted' 组件已卸载，调用方应静默退出
+ * - 'timeout'  等超时（异常状态），调用方可以提示失败
+ */
+const waitForSvgReady = async () => {
+  await nextTick()
+  if (isUnmounted) return 'unmounted'
+  if (ensureSvgViewportSize()) return 'ready'
+
+  // 容器的 v-show 条件是 !loading && !generating && !!mindmapData，
+  // 数据到达前它还没挂载，此时 mindmapSvg 为 null，需要等一次挂载。
+  if (!mindmapSvg.value) {
+    await waitForSignal('svg', SVG_MOUNT_TIMEOUT_MS)
+    await nextTick()
+    if (isUnmounted) return 'unmounted'
+    if (mindmapSvg.value && ensureSvgViewportSize()) return 'ready'
   }
-  return false
+
+  // 容器在 DOM 里，但没有尺寸：Tab 被隐藏，等它可见。
+  while (!isUnmounted) {
+    if (mindmapSvg.value && !mindmapSvg.value.isConnected) return 'unmounted'
+    await waitForSignal('size', SVG_VISIBLE_TIMEOUT_MS)
+    await nextTick()
+    if (isUnmounted) return 'unmounted'
+    if (ensureSvgViewportSize()) return 'ready'
+    if (mindmapSvg.value && !mindmapSvg.value.isConnected) return 'unmounted'
+  }
+  return 'unmounted'
 }
 
 const createSvgElement = (tagName) => document.createElementNS(SVG_NS, tagName)
@@ -467,14 +535,43 @@ const patchSafariTextFallback = () => {
 }
 
 /**
+ * 容器尺寸从 0 变为正值（用户从别的 Tab 切回思维导图）时的补渲染。
+ *
+ * 为什么必须有这一条：mindmap 数据在切走 Tab 期间就已加载完成，彼时容器
+ * display:none、尺寸为 0，渲染会被搁置；如果没人叫醒它，用户切回来只看到空白。
+ */
+const handleContainerResized = async (entry) => {
+  const { width, height } = entry.contentRect
+  if (!markmapInstance && mindmapData.value && width > 0 && height > 0) {
+    await nextTick()
+    if (isUnmounted || markmapInstance) return
+    if (ensureSvgViewportSize()) {
+      console.info('思维导图容器已可见，补渲染')
+      await renderMindmap(mindmapData.value)
+    }
+    return
+  }
+
+  if (markmapInstance) {
+    ensureSvgViewportSize()
+    syncSafariTextFallback()
+    markmapInstance.fit()
+  }
+}
+
+/**
  * 渲染思维导图
  */
 const renderMindmap = async (data) => {
   if (!data) return false
 
-  if (!(await waitForSvgReady())) {
-    console.error('无法获取SVG容器，渲染失败')
-    message.error('渲染失败：无法找到SVG容器')
+  const ready = await waitForSvgReady()
+  if (ready !== 'ready') {
+    // 组件已卸载（路由离开 / 父级销毁）不算失败，只是没必要再渲染。
+    if (ready === 'timeout') {
+      console.error('无法获取SVG容器，渲染失败')
+      message.error('渲染失败：无法找到SVG容器')
+    }
     return false
   }
 
@@ -555,36 +652,69 @@ watch(
   { immediate: true }
 )
 
-// 监听容器大小变化，自动适应
+// 监听容器大小变化：既用于自适应缩放，也用于"从隐藏变为可见时补渲染"
 let resizeObserver = null
+const destroyObserverCbs = []
+
+const observeSvgContainer = () => {
+  const container = svgContainer.value
+  if (!container || resizeObserver) return false
+  resizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[entries.length - 1]
+    if (!entry) return
+    // 容器由 display:none 变为可见时，任何正在等尺寸的渲染流程都应立刻被唤醒。
+    if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+      notifyReady('size')
+    }
+    handleContainerResized(entry)
+  })
+  resizeObserver.observe(container)
+  return true
+}
 
 onMounted(() => {
-  // 设置ResizeObserver监听容器大小变化
   nextTick(() => {
-    if (mindmapSvg.value) {
-      const container = mindmapSvg.value.parentElement
-      if (container) {
-        resizeObserver = new ResizeObserver(() => {
-          if (markmapInstance) {
-            ensureSvgViewportSize()
-            syncSafariTextFallback()
-            markmapInstance.fit()
-          }
-        })
-        resizeObserver.observe(container)
-      }
-    }
+    observeSvgContainer()
   })
 })
 
+// onMounted 那一刻容器可能还没挂载（mindmapData 为空，v-show 判定为假），
+// 因此这里在容器出现时补挂 ResizeObserver，并唤醒等待挂载的渲染流程。
+destroyObserverCbs.push(
+  watch(svgContainer, (element) => {
+    if (!element) return
+    observeSvgContainer()
+    notifyReady('svg')
+  })
+)
+
+// 容器本可渲染却被隐藏时不报错：切回该 Tab 后 ResizeObserver 会补渲染。
+// 这里只做数据变化时的清理，避免旧实例残留。
+destroyObserverCbs.push(
+  watch(mindmapData, (data) => {
+    if (!data && markmapInstance) {
+      markmapInstance.destroy()
+      markmapInstance = null
+    }
+  })
+)
+
 // 清理
 onUnmounted(() => {
+  isUnmounted = true
+  notifyReady('svg')
+  notifyReady('size')
   if (markmapInstance) {
     markmapInstance.destroy()
+    markmapInstance = null
   }
   if (resizeObserver) {
     resizeObserver.disconnect()
+    resizeObserver = null
   }
+  destroyObserverCbs.forEach((dispose) => dispose())
+  destroyObserverCbs.length = 0
+  pendingReady = Object.create(null)
 })
 </script>
 
