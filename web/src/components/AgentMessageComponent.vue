@@ -67,7 +67,7 @@
       <div v-if="displayError" class="error-hint">
         <span v-if="getErrorMessage">{{ getErrorMessage }}</span>
         <span v-else-if="message.error_type === 'interrupted'">回答生成已中断</span>
-        <span v-else-if="message.error_type === 'unexpect'">生成过程中出现异常</span>
+        <span v-else-if="message.error_type === 'unexpect' || message.error_type === 'unexpected_error' || message.error_type === 'worker_error'">生成过程中出现异常</span>
         <span v-else-if="message.error_type === 'content_guard_blocked'"
           >检测到敏感内容，已中断输出</span
         >
@@ -88,8 +88,8 @@
 
       <div
         v-if="
-          (message.role == 'received' || message.role == 'assistant') &&
-          message.status == 'finished' &&
+          isAssistantMessage &&
+          isMessageSettled &&
           showRefs
         "
       >
@@ -291,6 +291,8 @@ const getErrorMessage = computed(() => {
     case 'content_guard_blocked':
       return '检测到敏感内容，已中断输出'
     case 'unexpect':
+    case 'unexpected_error':
+    case 'worker_error':
       return '生成过程中出现异常'
     case 'agent_error':
       return '智能体获取失败'
@@ -311,6 +313,22 @@ const messageImageMimeType = computed(
 )
 
 const mentionDisplayLabels = computed(() => buildMentionDisplayLabels(props.mention || {}))
+
+// 是否 AI 回答。历史接口返回的是 `type: 'ai'`（没有 role 字段），
+// 流式中的消息才会带 role，两种都要认，否则刷新页面后整排操作栏（含反馈）消失。
+const isAssistantMessage = computed(
+  () =>
+    props.message.type === 'ai' ||
+    props.message.role === 'assistant' ||
+    props.message.role === 'received'
+)
+
+// 是否已结束。messages 表**没有 status 列**，历史消息拿不到 status，
+// 所以"没有 status"要按已完成处理，只有显式处于生成中/失败才不展示。
+const isMessageSettled = computed(() => {
+  const s = props.message.status
+  return !s || s === 'finished' || s === 'completed'
+})
 
 const messageSources = computed(() => {
   if (props.message.type === 'ai') {

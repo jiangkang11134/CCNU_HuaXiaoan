@@ -20,6 +20,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    build: {
+      // 不要让 esbuild 把 @media (max-width: 768px) 压成 @media (width<=768px)：
+      // 媒体查询范围语法要 Safari 16.4 / Chrome 104 以上才认，老手机上会被整条忽略，
+      // 表现是「全站响应式失效、侧边栏收起等移动端规则全部不生效」。
+      cssTarget: ['chrome87', 'edge88', 'firefox78', 'safari14']
+    },
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))

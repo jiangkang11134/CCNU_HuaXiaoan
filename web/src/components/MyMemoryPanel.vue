@@ -61,6 +61,8 @@
                 <span class="meta-sep">·</span>
                 <span class="meta-text">置信度 {{ confidenceText(row.confidence) }}</span>
               </template>
+              <span class="meta-sep">·</span>
+              <span class="meta-text" :title="expiryTitle(row)">{{ expiryText(row) }}</span>
             </div>
           </div>
           <div class="memory-actions">
@@ -132,7 +134,7 @@ import { message } from 'ant-design-vue'
 import { ClipboardList, RefreshCw } from 'lucide-vue-next'
 import { myMemoryApi } from '@/apis/memory_api'
 import { userConfigApi } from '@/apis/user_config_api'
-import { formatFullDateTime, formatRelative } from '@/utils/time'
+import { formatFullDateTime, formatRelative, parseToShanghai } from '@/utils/time'
 
 // 后端 GET /memory 的 limit 上限，也是本页一次能展示的条数上限。
 const PAGE_LIMIT = 100
@@ -152,6 +154,8 @@ const EVENT_LABELS = {
   tombstoned: '已删除',
   superseded: '被新信息取代',
   conflicted: '与既有记忆冲突',
+  renewed: '有效期已续期',
+  reclassified: '已改判事实类型',
   expired: '已过期'
 }
 const ACTOR_LABELS = { user: '你', admin: '管理员', system: '系统' }
@@ -176,6 +180,22 @@ const confidenceText = (value) => {
 }
 const eventLabel = (type) => EVENT_LABELS[type] || type || '变更'
 const actorLabel = (type) => ACTOR_LABELS[type] || type || '系统'
+
+// 有效期：后端 expires_at 为空**不是**"未知"，而是"不过期"（多数事实键都是这样）。
+// 目前只有「研究方向」（30 天）与「工作环境」（7 天）会过期，且**再次提到就会从当天重新计时**——
+// 这两句话都得让用户看得见，否则他只会看到一个数字掉到 0 然后记忆"莫名消失"。
+const expiryText = (row) => {
+  const end = parseToShanghai(row.expires_at)
+  if (!end) return '长期有效'
+  const hours = end.diff(parseToShanghai(Date.now()), 'hour')
+  if (hours <= 0) return '即将到期'
+  return `有效期还剩 ${Math.ceil(hours / 24)} 天`
+}
+
+const expiryTitle = (row) =>
+  row.expires_at
+    ? `有效期至 ${formatFullDateTime(row.expires_at)}。到期后这条不再影响对话，记录与变更历史会保留；再次提到它会重新计时。`
+    : '长期有效：这条不会自动过期，只有你自己撤回或它被新信息取代时才会失效。'
 
 const truncated = computed(() => items.value.length >= PAGE_LIMIT)
 

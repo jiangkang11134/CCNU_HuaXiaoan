@@ -167,7 +167,9 @@ export function useAgentStreamHandler({
 
       case 'error':
         streamSmoother?.flushThread(threadId)
-        handleChatError({ message: chunkMessage }, 'stream')
+        // 后端错误块把原因放在 error_message（见 chat_service.make_chunk / run_worker），
+        // 只读 message 会退化成裸的“流式处理失败”，排查时拿不到任何线索。
+        handleChatError({ message: chunkMessage || chunk.error_message }, 'stream')
         // Stop the loading indicator
         if (threadState) {
           threadState.isStreaming = false

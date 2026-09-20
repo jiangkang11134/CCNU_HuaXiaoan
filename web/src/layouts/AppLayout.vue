@@ -16,7 +16,9 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
-  Users
+  Users,
+  Menu,
+  X
 } from 'lucide-vue-next'
 
 import { useConfigStore } from '@/stores/config'
@@ -47,6 +49,23 @@ const { threads, currentThreadId, hasMoreThreads, isLoadingMoreThreads } =
 
 const { sidebarCollapsed } = storeToRefs(chatUIStore)
 const conversationSearchOpen = ref(false)
+
+// 移动端（<=768px）：侧边栏收起为抽屉，由左上角按钮唤出
+const mobileNavOpen = ref(false)
+const openMobileNav = () => {
+  setSidebarCollapsed(false)
+  mobileNavOpen.value = true
+}
+const closeMobileNav = () => {
+  mobileNavOpen.value = false
+}
+const toggleMobileNav = () => {
+  if (mobileNavOpen.value) {
+    closeMobileNav()
+    return
+  }
+  openMobileNav()
+}
 
 const getRemoteConfig = async () => {
   try {
@@ -84,11 +103,13 @@ const activeTaskCount = computed(() => activeCountRef.value || 0)
 const activeConversationThreadId = computed(() => {
   return route.path.startsWith('/front/agent') ? currentThreadId.value : null
 })
+const isAgentChatRoute = computed(() => route.path.startsWith('/front/agent'))
+
 const showConversationNavigation = computed(
   () => !userStore.isAdmin && (route.path.startsWith('/front/agent') || route.path.startsWith('/front/lab-safety'))
 )
 const organizationName = computed(() => {
-  return infoStore.organization.name || infoStore.branding.name || '实验室安全教育智能对话平台'
+  return infoStore.organization.name || infoStore.branding.name || '实验室安全教育AI智能体系统'
 })
 
 // 下面是导航菜单部分，添加智能体项
@@ -212,6 +233,7 @@ const toggleSidebar = () => {
 const openConversationSearch = () => {
   if (!showConversationNavigation.value) return
   conversationSearchOpen.value = true
+  closeMobileNav()
 }
 
 const initAgentNavigation = async () => {
@@ -227,6 +249,7 @@ const initAgentNavigation = async () => {
 
 const handleSelectChat = (threadId) => {
   if (!threadId) return
+  closeMobileNav()
   chatThreadsStore.setCurrentThreadId(threadId)
   router.push({ name: 'AgentCompWithThreadId', params: { thread_id: threadId } })
 }
@@ -242,6 +265,7 @@ const handleSearchSelectThread = (thread) => {
 }
 
 const handleCreateConversationFromSearch = () => {
+  closeMobileNav()
   chatThreadsStore.setCurrentThreadId(null)
   router.push({ name: 'AgentComp' })
 }
@@ -304,10 +328,33 @@ watch(showConversationNavigation, async (shouldShow) => {
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+  <div
+    class="app-layout"
+    :class="{
+      'sidebar-collapsed': sidebarCollapsed,
+      'mobile-nav-open': mobileNavOpen,
+      'mobile-nav-offset': !isAgentChatRoute
+    }"
+  >
+    <button
+      type="button"
+      class="mobile-nav-toggle"
+      :aria-expanded="mobileNavOpen"
+      aria-label="打开导航菜单"
+      @click.stop="toggleMobileNav"
+    >
+      <X v-if="mobileNavOpen" size="18" />
+      <Menu v-else size="18" />
+    </button>
+    <div v-if="mobileNavOpen" class="mobile-nav-overlay" @click="closeMobileNav"></div>
     <div class="header">
       <div class="sidebar-brand" @click.stop>
-        <router-link v-if="!sidebarCollapsed" to="/" class="brand-link">
+        <router-link
+          v-if="!sidebarCollapsed"
+          to="/"
+          class="brand-link"
+          @click="closeMobileNav"
+        >
           <img :src="infoStore.organization.avatar" class="brand-avatar" />
           <span class="brand-name">{{ organizationName }}</span>
         </router-link>
@@ -338,7 +385,7 @@ watch(showConversationNavigation, async (shouldShow) => {
           class="nav-item"
           :class="{ active: isNavItemActive(primaryNavItem) }"
           :active-class="primaryNavItem.action ? '' : 'active'"
-          @click.stop
+          @click.stop="closeMobileNav"
         >
           <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
             <template #title>{{ primaryNavItem.name }}</template>
@@ -375,7 +422,7 @@ watch(showConversationNavigation, async (shouldShow) => {
           class="nav-item"
           :class="{ active: isNavItemActive(item) }"
           :active-class="item.action ? '' : 'active'"
-          @click.stop
+          @click.stop="closeMobileNav"
         >
           <a-tooltip placement="right" :open="sidebarCollapsed ? undefined : false">
             <template #title>{{ item.name }}</template>
@@ -544,7 +591,7 @@ div.header,
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: @sidebar-item-height;
+    min-height: @sidebar-item-height;
     gap: 8px;
   }
 
@@ -571,15 +618,17 @@ div.header,
   }
 
   .brand-name {
+    display: -webkit-box;
     min-width: 0;
     margin-left: 10px;
     overflow: hidden;
     color: var(--gray-1000);
-    font-size: 15px;
+    font-size: 13px;
     font-weight: 650;
-    line-height: 20px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 16px;
+    word-break: break-word;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 
   .sidebar-toggle {
@@ -851,6 +900,132 @@ div.header,
         }
       }
     }
+  }
+}
+
+/* ============ 移动端（<=768px）：侧边栏改为抽屉 ============ */
+.mobile-nav-toggle,
+.mobile-nav-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    min-width: 0;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .mobile-nav-toggle {
+    position: fixed;
+    top: 6px;
+    left: 8px;
+    z-index: 60;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--gray-150);
+    border-radius: 8px;
+    background: var(--gray-0);
+    color: var(--gray-900);
+    box-shadow: 0 1px 4px rgba(0, 10, 20, 0.06);
+    cursor: pointer;
+    transition:
+      left 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+      background-color 0.15s ease,
+      color 0.15s ease;
+
+    &:active {
+      background: var(--main-20);
+      color: var(--main-color);
+    }
+  }
+
+  /* 抽屉展开后，按钮移到抽屉右侧，避免压住品牌区 */
+  .app-layout.mobile-nav-open .mobile-nav-toggle {
+    left: 272px;
+  }
+
+  .mobile-nav-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 54;
+    background: rgba(15, 23, 42, 0.42);
+  }
+
+  /* 抽屉本体：脱离文档流，默认移出屏幕左侧 */
+  .header,
+  .app-layout.sidebar-collapsed .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 55;
+    width: 264px;
+    flex: 0 0 264px;
+    height: auto;
+    gap: 10px;
+    padding: 10px 8px;
+    border-right: 1px solid var(--gray-100);
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+  }
+
+  .app-layout.mobile-nav-open .header {
+    transform: translateX(0);
+    box-shadow: 8px 0 28px rgba(0, 10, 20, 0.16);
+  }
+
+  /* 抽屉内一律显示完整文字（即使桌面端处于折叠态） */
+  .app-layout.sidebar-collapsed .header {
+    .sidebar-brand {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .nav-item {
+      justify-content: flex-start;
+      width: 100%;
+      padding: 0 @sidebar-item-padding-x;
+
+      .nav-text {
+        max-width: 140px;
+        margin-left: 8px;
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      &.user-info {
+        padding: 0 3px;
+
+        :deep(.user-info-actions) {
+          display: flex;
+        }
+      }
+    }
+  }
+
+  /* 折叠按钮在抽屉模式下没有意义 */
+  .sidebar-toggle {
+    display: none;
+  }
+
+  #app-router-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* 非聊天页：让出左上角汉堡按钮的位置 */
+  .app-layout.mobile-nav-offset #app-router-view {
+    padding-top: 44px;
   }
 }
 </style>

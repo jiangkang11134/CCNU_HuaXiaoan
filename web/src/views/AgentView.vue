@@ -288,6 +288,7 @@ const openAgentManagement = async () => {
   flex-direction: column;
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 

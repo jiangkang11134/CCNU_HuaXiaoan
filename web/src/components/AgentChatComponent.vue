@@ -1399,7 +1399,15 @@ const shouldShowRefs = computed(() => {
     if (!getLastMessage(conv) || conv.status === 'streaming' || shouldSuppressRefsForApproval()) {
       return false
     }
-    return isConversationSettled(conv)
+    if (!isConversationSettled(conv)) {
+      return false
+    }
+    // 消息级操作栏（贴在回答正下方，含反馈按钮）已经渲染时，会话级这份就不再渲染，
+    // 否则同一条回答下面会出现两排重复的「反馈 / 复制 / 来源」。
+    if (showMsgRefs(getLastMessage(conv), conv)) {
+      return false
+    }
+    return true
   }
 })
 
@@ -2858,8 +2866,11 @@ const showMsgRefs = (msg, conv) => {
     return false
   }
 
-  // 只有真正完成的消息才显示 refs
-  if (msg.isLast && msg.status === 'finished') {
+  // 只有真正完成的消息才显示 refs。
+  // 注意：历史消息**没有 status 字段**（messages 表也没这一列），刷新后
+  // `msg.status` 是 undefined，按"已完成"处理，否则历史回答的反馈入口会整排消失。
+  const settled = !msg.status || msg.status === 'finished' || msg.status === 'completed'
+  if (msg.isLast && settled) {
     return shouldShowReferences.value ? ['copy', 'sources'] : ['copy']
   }
   return false
@@ -3587,10 +3598,19 @@ watch(currentChatId, (threadId, oldThreadId) => {
   }
 
   .chat-header {
+    padding-left: 50px;
+    padding-right: 8px;
+
     .header__left {
+      min-width: 0;
+
       .text {
         display: none;
       }
+    }
+
+    .conversation-title {
+      max-width: 42vw;
     }
   }
 }

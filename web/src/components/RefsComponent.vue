@@ -1,27 +1,41 @@
 <template>
   <div class="refs" v-if="showRefs">
     <div class="tags">
-      <!-- 反馈 -->
+      <!-- 反馈：学生侧唯一的反馈入口，必须一眼看得见。
+           原来只有 12px 无文字的灰图标，混在「模型名/复制/来源」里，用户根本找不到。 -->
+      <span class="item feedback-label">反馈</span>
       <span
-        class="item btn"
-        :class="{ disabled: feedbackState.hasSubmitted }"
+        class="item btn feedback-btn"
+        :class="{
+          disabled: feedbackState.hasSubmitted,
+          active: feedbackState.rating === 'like'
+        }"
         @click="likeThisResponse(msg)"
         :title="feedbackState.hasSubmitted && feedbackState.rating === 'like' ? '已点赞' : '点赞'"
       >
-        <ThumbsUp size="12" :fill="feedbackState.rating === 'like' ? 'currentColor' : 'none'" />
+        <ThumbsUp size="14" :fill="feedbackState.rating === 'like' ? 'currentColor' : 'none'" />
+        <span class="feedback-text">
+          {{ feedbackState.hasSubmitted && feedbackState.rating === 'like' ? '已点赞' : '点赞' }}
+        </span>
       </span>
       <span
-        class="item btn"
-        :class="{ disabled: feedbackState.hasSubmitted }"
+        class="item btn feedback-btn"
+        :class="{
+          disabled: feedbackState.hasSubmitted,
+          active: feedbackState.rating === 'dislike'
+        }"
         @click="dislikeThisResponse(msg)"
         :title="
           feedbackState.hasSubmitted && feedbackState.rating === 'dislike' ? '已点踩' : '点踩'
         "
       >
         <ThumbsDown
-          size="12"
+          size="14"
           :fill="feedbackState.rating === 'dislike' ? 'currentColor' : 'none'"
         />
+        <span class="feedback-text">
+          {{ feedbackState.hasSubmitted && feedbackState.rating === 'dislike' ? '已点踩' : '点踩' }}
+        </span>
       </span>
       <!-- 模型名称 -->
       <span v-if="showKey('model') && getModelName(msg)" class="item" @click="console.log(msg)">
@@ -217,11 +231,18 @@ const showRefs = computed(() => {
   if (props.showRefs && Array.isArray(props.showRefs) && props.showRefs.includes('model')) {
     return true
   }
-  // 原有的逻辑
-  return (
-    (msg.value.role == 'received' || msg.value.role == 'assistant') &&
-    msg.value.status == 'finished'
-  )
+  // 原有的逻辑。这里两处都要容错，否则**历史会话的操作栏（含反馈入口）永远不显示**：
+  // - role：历史接口返回的是 `type: 'ai'`，根本没有 role 字段；
+  // - status：messages 表没有 status 列，历史消息拿不到 status，要按已完成处理。
+  const isAi =
+    msg.value?.type === 'ai' ||
+    msg.value?.role === 'assistant' ||
+    msg.value?.role === 'received'
+  const settled =
+    !msg.value?.status ||
+    msg.value.status === 'finished' ||
+    msg.value.status === 'completed'
+  return Boolean(props.showRefs) && isAi && settled
 })
 
 // 添加重新生成方法
@@ -365,6 +386,35 @@ const cancelDislike = () => {
           background: var(--gray-50);
         }
       }
+    }
+  }
+
+  // 反馈：入口可见性改造（学生界面唯一的反馈通道，不能再是看不清的小灰图标）
+  .feedback-label {
+    background: transparent;
+    color: var(--gray-500);
+    padding: 6px 2px;
+    cursor: default;
+  }
+
+  .feedback-btn {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+
+    .feedback-text {
+      font-size: 13px;
+    }
+
+    // 已提交的那一项高亮，用户能立刻看出自己点的是哪个
+    &.active {
+      color: var(--main-color);
+      border-color: var(--main-color);
+      background: var(--gray-50);
+    }
+
+    &:not(.disabled):hover {
+      border-color: var(--main-color);
+      color: var(--main-color);
     }
   }
 
