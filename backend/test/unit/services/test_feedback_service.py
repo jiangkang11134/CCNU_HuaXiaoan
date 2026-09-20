@@ -9,6 +9,8 @@ from fastapi import HTTPException
 from yuxi.self_evolution.service import CorrectionService
 from yuxi.services import feedback_service as svc
 
+from _fake_system_kv import fake_execute
+
 
 class _FakeResult:
     def __init__(self, value):
@@ -31,11 +33,11 @@ class _FakeSession:
         self.committed = False
         self.rolled_back = False
 
-    async def execute(self, _query):
-        return _FakeResult(self.results.pop(0) if self.results else None)
+    async def execute(self, query):
+        return fake_execute(self, query, lambda: _FakeResult(self.results.pop(0) if self.results else None))
 
     async def get(self, _model, _key):
-        return self.kv
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
 
     def add(self, item):
         self.added.append(item)

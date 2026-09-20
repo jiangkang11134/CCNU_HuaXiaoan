@@ -139,6 +139,18 @@ MEMORY_OBSERVE_KV = "memory_observe"
 INTENT_CALIBER_KV = "intent_caliber"
 
 
+async def _get_system_kv(db, key: str):
+    """按 key 查 SystemKV 行。
+
+    不能写成 ``db.get(SystemKV, key)``——SystemKV 的主键是自增整型 id，
+    按主键取行必须传 int；传字符串 key 会被 asyncpg 拒绝并抛
+    ``DataError: 'str' object cannot be interpreted as an integer``。
+    在未被 try/except 包住的调用点（如读 model_routing）会把整轮对话打挂。
+    """
+    result = await db.execute(select(SystemKV).filter(SystemKV.key == key))
+    return result.scalar_one_or_none()
+
+
 async def _resolve_bool_switch(db, key: str, default: bool) -> bool:
     """SystemKV 里的布尔开关；读不到或格式不对一律回默认值。
 
@@ -146,7 +158,7 @@ async def _resolve_bool_switch(db, key: str, default: bool) -> bool:
     也不能把异常变成"关掉"——那会让一次数据库抖动悄悄改掉系统行为。
     """
     try:
-        kv = await db.get(SystemKV, key)
+        kv = await _get_system_kv(db, key)
         if kv and isinstance(kv.value, dict):
             enabled = kv.value.get("enabled")
             if isinstance(enabled, bool):
@@ -1036,7 +1048,7 @@ async def stream_agent_chat(
         global_system_prompt=global_system_prompt,
     )
     preprocess_result = preprocess(query)
-    routing_row = await db.get(SystemKV, "model_routing")
+    routing_row = await _get_system_kv(db, "model_routing")
     routing = routing_row.value if routing_row and isinstance(routing_row.value, dict) else {}
     if preprocess_result.intent == "graph_rag_query" and routing.get("intent_enabled", True):
         classified = await classify_with_api(query, routing)

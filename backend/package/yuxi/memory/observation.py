@@ -7,19 +7,23 @@
    ``user.*`` 是跨会话画像（进长期记忆），``project.*`` 是会话内约束（进事实状态机）。
 2. **校验** :func:`normalize_op` —— 白名单外、含敏感信息、结构非法的 op 一律丢弃。
 3. **裁决** :func:`arbitrate` —— 决定长期记忆落在哪个状态。
+4. **有效期** :func:`memory_fact_ttl` —— 分键 TTL（多数长期有效，研究方向 30 天、
+   工作环境 7 天），再次提及即续期。
 
-"LLM 只能提议，不能决定"的边界由这三道闸在**服务端**维持。
+"LLM 只能提议，不能决定"的边界由这些闸在**服务端**维持。
 prompt 可以搬位置，闸门不能搬位置。
 """
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 # 与设计文档 §19 白名单一致；LLM 抽取到的 key 必须落在其中。
 MEMORY_FACT_KEYS = {
     "user.major",
     "user.education_stage",
     "user.research_direction",
+    "user.work_environment",
     "user.lab_role",
     "user.response_preference",
     "project.current_goal",
@@ -34,10 +38,44 @@ AUTO_CONFIRM_KEYS = {
     "user.major",
     "user.education_stage",
     "user.research_direction",
+    "user.work_environment",
     "user.lab_role",
     "user.response_preference",
 }
 AUTO_CONFIRM_MIN_CONFIDENCE = 0.85
+
+#: 长期记忆的**分键有效期**（天）。不在此表的键视为长期有效（``expires_at`` 留空）。
+#:
+#: 为什么不是所有 ``user.*`` 都长期有效：画像的稳定度并不一样。
+#: 「研究方向」会随课题推进换方向，「工作环境」更是可能换实验室、换学期——
+#: 把这两类当永久画像，三个月后模型还在按旧实验室的场景给建议，比不记更危险。
+#: （用户 2026-09-20 明确口径：研究方向 30 天、工作环境 7 天。）
+#:
+#: 到期**不是删除**：``MemoryService.expire_memories`` 只把状态改成 ``expired``，
+#: 行与审计事件都留着，所以「这条为什么不再生效」永远查得到。
+#:
+#: **续期规则**：同一条内容被再次提及会把有效期往后推满一个 TTL
+#: （``MemoryService._apply_memory_fact`` 的 skipped / confirmed 分支）——
+#: 「还在说」就等于「还有效」。没有这一步，TTL 会退化成"最后一次提及的随机时刻 + TTL"。
+MEMORY_FACT_TTL_DAYS: dict[str, int] = {
+    "user.research_direction": 30,
+    "user.work_environment": 7,
+}
+
+#: 由天换算一次，避免每轮热路径都构造 ``timedelta``。
+MEMORY_FACT_TTL: dict[str, timedelta] = {
+    key: timedelta(days=days) for key, days in MEMORY_FACT_TTL_DAYS.items()
+}
+
+
+def memory_fact_ttl(fact_key: str) -> timedelta | None:
+    """取该键的有效期；不在表内返回 ``None``，语义是**不过期**。
+
+    返回 ``None`` 而不是某个大数：``expires_at`` 为空在 SQL 侧就是"永不过期"
+    （``expires_at IS NULL OR expires_at > now()``），两边语义一致，
+    不需要再约定一个"足够大的天数"当哨兵。
+    """
+    return MEMORY_FACT_TTL.get(fact_key)
 
 #: 通道裁定：key 前缀决定它该进哪张表，不由模型自由填。
 #: 让模型自己选通道会重现"方向对穿"——偏好写进会话事实表、会话事实写进长期记忆表。

@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yuxi.storage.postgres.models_business import CorrectionTicket, SystemKV
+from yuxi.storage.postgres.system_kv import get_system_kv
 
 from .metrics import (
     collect_correction_metrics,
@@ -129,7 +130,7 @@ async def scan_conflicts(db: AsyncSession) -> list[tuple[int, int]]:
     """
     from .service import _find_conflict_pairs
 
-    kv = await db.get(SystemKV, CORRECTION_RETRIEVAL_KV)
+    kv = await get_system_kv(db, CORRECTION_RETRIEVAL_KV)
     cfg = kv.value if kv is not None and isinstance(kv.value, dict) else {}
     floor = float(cfg.get("conflict_dense_floor", DEFAULT_CONFLICT_DENSE_FLOOR))
     rows = (await db.execute(select(CorrectionTicket).where(
@@ -161,7 +162,7 @@ async def _apply_confidence_updates(db: AsyncSession, ticket_stats: dict[int, di
 async def _calibrate(db: AsyncSession, days: int) -> dict:
     since, until = resolve_window(days)
     summary = await collect_correction_metrics(db, since=since, until=until)
-    kv = await db.get(SystemKV, CORRECTION_RETRIEVAL_KV)
+    kv = await get_system_kv(db, CORRECTION_RETRIEVAL_KV)
     current = dict(kv.value) if kv is not None and isinstance(kv.value, dict) else {}
     decision = decide_thresholds(current, summary)
     ticket_stats = await collect_ticket_win_rates(db, since=since, until=until)

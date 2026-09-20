@@ -48,10 +48,10 @@ async def _load_chat_fallback_specs() -> list[str]:
     specs: list[str] = []
     try:
         from yuxi.storage.postgres.manager import pg_manager
-        from yuxi.storage.postgres.models_business import SystemKV
+        from yuxi.storage.postgres.system_kv import get_system_kv
 
         async with pg_manager.get_async_session_context() as db:
-            row = await db.get(SystemKV, "model_routing")
+            row = await get_system_kv(db, "model_routing")
         routing = row.value if row and isinstance(row.value, dict) else {}
         if routing.get("chat_fallback_enabled"):
             specs = [s.strip() for s in (routing.get("chat_fallback_specs") or []) if isinstance(s, str) and s.strip()]

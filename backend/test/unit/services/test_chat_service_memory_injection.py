@@ -52,18 +52,25 @@ def test_build_agent_context_keeps_request_intent():
 
 
 class _KvDB:
-    """只覆盖 SystemKV.get 的假 DB；value=None 表示没有这条记录。"""
+    """假 DB：只实现 SystemKV 的**按 key** 查询（走 execute）。
+
+    SystemKV 的主键是自增整型 id，`db.get(SystemKV, key)` 会被 asyncpg 拒绝并抛
+    DataError: 'str' object cannot be interpreted as an integer。所以这里把 get
+    直接钉成失败——谁改回主键写法谁红。
+    """
 
     def __init__(self, value=None, boom=False):
         self._value = value
         self._boom = boom
 
-    async def get(self, _model, _key):
+    async def execute(self, *_args, **_kwargs):
         if self._boom:
             raise RuntimeError("db down")
-        if self._value is None:
-            return None
-        return SimpleNamespace(value=self._value)
+        rows = [] if self._value is None else [SimpleNamespace(value=self._value)]
+        return _Res(rows)
+
+    async def get(self, *_args, **_kwargs):  # pragma: no cover - 不应被调用
+        raise AssertionError("SystemKV 必须按 key 查，不能用 db.get(model, key)")
 
 
 def test_intent_caliber_switch_defaults_on_and_is_respected():

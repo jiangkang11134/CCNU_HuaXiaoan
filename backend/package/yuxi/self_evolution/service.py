@@ -25,8 +25,8 @@ from yuxi.storage.postgres.event_log import record_event
 from yuxi.storage.postgres.models_business import (
     CorrectionTicket,
     MessageFeedback,
-    SystemKV,
 )
+from yuxi.storage.postgres.system_kv import get_system_kv
 
 from .scope import (
     SCOPE_DEPT_RULE,
@@ -202,7 +202,7 @@ async def _embed_query_by_specs(specs: set[str], query: str) -> dict[str, list]:
 async def _load_correction_config(db: AsyncSession) -> dict:
     """SystemKV correction_retrieval：阈值/冲突底线/向量 spec 覆盖，读失败回默认。"""
     try:
-        kv = await db.get(SystemKV, CORRECTION_RETRIEVAL_KV)
+        kv = await get_system_kv(db, CORRECTION_RETRIEVAL_KV)
         if kv and isinstance(kv.value, dict):
             return kv.value
     except Exception:
@@ -244,12 +244,20 @@ def _dialect_name(db) -> str:
 
 
 def _jsonb_array_expr(column: str) -> str:
-    """把 JSONB 列归一成"一定是数组"的表达式。
+    """把 JSON 列归一成"一定是 jsonb 数组"的表达式。
 
     列里理论上只会有数组，但 jsonb_array_elements_text 收到非数组会直接报错；
     用 CASE 兜住可以让下面的 EXISTS 无论 OR 的求值顺序如何都不会炸。
+
+    **必须显式 ::jsonb**：CorrectionTicket.entity_hints / intent_tags 在模型里是
+    ``Column(JSON)``（不是 JSONB），而 PG 的 jsonb_* 系列函数只收 jsonb——
+    直接写 jsonb_typeof(json 列) 会抛 UndefinedFunctionError
+    "function jsonb_typeof(json) does not exist"，并进而**污染整个事务**，
+    让同一次问答里后续所有查询都报 InFailedSQLTransactionError。
+    对本来就是 jsonb 的列，::jsonb 是无害的空转换。
     """
-    return f"CASE WHEN jsonb_typeof({column}) = 'array' THEN {column} ELSE '[]'::jsonb END"
+    as_jsonb = f"CAST({column} AS jsonb)"
+    return f"CASE WHEN jsonb_typeof({as_jsonb}) = 'array' THEN {as_jsonb} ELSE '[]'::jsonb END"
 
 
 def _correction_prefilter_conditions(db, query: str, intent: str | None) -> list:

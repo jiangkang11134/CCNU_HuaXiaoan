@@ -191,7 +191,9 @@ async def test_session_op_writes_only_session_fact():
     stats = await MemoryService.apply_extracted_ops(
         db, "u1", "t1", [(CHANNEL_SESSION, "project.phase_scope", "只做第一步", 0.9, None)]
     )
-    assert stats == {"session": 1, "memory": 0, "confirmed": 0, "rejected": 0, "skipped": 0}
+    assert stats == {
+        "session": 1, "memory": 0, "confirmed": 0, "renewed": 0, "rejected": 0, "skipped": 0,
+    }
     # 事实 + 若干审计事件，关键是没有长期记忆
     assert db.kinds().count("SessionFact") == 1
     assert "UserMemoryFact" not in db.kinds()

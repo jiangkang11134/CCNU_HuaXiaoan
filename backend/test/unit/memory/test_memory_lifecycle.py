@@ -4,13 +4,21 @@
 ``test/unit/self_evolution/test_correction_helpers.py``。
 """
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 
+from yuxi.memory.observation import (
+    AUTO_CONFIRM_KEYS,
+    MEMORY_FACT_KEYS,
+    MEMORY_FACT_TTL_DAYS,
+    arbitrate,
+    memory_fact_ttl,
+)
 from yuxi.memory.service import SESSION_FACT_TTL, SESSION_FACT_TTL_DAYS, MemoryService
 from yuxi.memory.state_machine import transition
+from yuxi.storage.postgres.models_business import UserMemoryFact
 
 
 def _now():
@@ -210,3 +218,140 @@ def test_build_context_does_not_touch_redis(monkeypatch):
             _SeqDB([[session], []]), "u1", "t1", False, "浓硫酸怎么存放")
 
     assert "[session] major: 化学" in asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# 分键有效期（2026-09-20）：研究方向 30 天、工作环境 7 天，**再次提及即续期**
+# ---------------------------------------------------------------------------
+
+
+class _MemoryDB:
+    """只服务 ``_apply_memory_fact`` 的假 DB：一次查询 + add/flush + 审计事件。
+
+    ``flush`` 必须给新行补一个 id：函数建行后立刻 flush，紧接着写审计事件，
+    事件里的 ``target_id`` 取自 ``row.id``，真实库由自增序列填，这里不补就 ``int(None)``。
+    """
+
+    def __init__(self, existing=None):
+        self._existing = existing
+        self.added = []
+
+    async def execute(self, *_args, **_kwargs):
+        return _SeqResult([self._existing] if self._existing is not None else [])
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def flush(self):
+        for index, obj in enumerate(self.added):
+            if getattr(obj, "id", None) is None:
+                obj.id = 900 + index
+
+
+def _memory_row(fact_key, content, *, status="confirmed", expires_at=None, row_id=501):
+    """造一条既有长期记忆。
+
+    ``row_id`` 必须给：``_apply_memory_fact`` 的续期/取代分支会把 ``row.id`` 写进审计事件，
+    真实库里它是自增主键、绝不会是 None，假数据留空就只能在 ``int(None)`` 处炸。
+    """
+    return UserMemoryFact(
+        id=row_id, uid="u1", fact_key=fact_key, content=content, status=status,
+        confidence=0.9, expires_at=expires_at,
+    )
+
+
+def _new_memory_row(db):
+    return next(o for o in db.added if isinstance(o, UserMemoryFact))
+
+
+def test_memory_fact_ttl_is_per_key():
+    """TTL 是分键的而不是全局的；这两个数字是用户明确给的口径，别随手改。"""
+    assert MEMORY_FACT_TTL_DAYS == {
+        "user.research_direction": 30,
+        "user.work_environment": 7,
+    }
+    assert memory_fact_ttl("user.research_direction") == timedelta(days=30)
+    assert memory_fact_ttl("user.work_environment") == timedelta(days=7)
+    # 不在表里 = 不过期（``None`` 落库成 NULL 列，SQL 侧就是"永不过期"）
+    assert memory_fact_ttl("user.major") is None
+    assert memory_fact_ttl("user.response_preference") is None
+
+
+def test_memory_ttl_keys_are_whitelisted():
+    """TTL 表里写了白名单没有的键（笔误）会静默不生效——没有任何地方会报错。"""
+    unknown = sorted(k for k in MEMORY_FACT_TTL_DAYS if k not in MEMORY_FACT_KEYS)
+    assert not unknown, f"TTL 表里出现了白名单外的键: {unknown}"
+
+
+def test_work_environment_is_whitelisted_and_auto_confirmed():
+    """工作环境要"抽得出来"且"抽出来就能用"——缺任一条都等于记了也看不见。"""
+    assert "user.work_environment" in MEMORY_FACT_KEYS
+    assert "user.work_environment" in AUTO_CONFIRM_KEYS
+    assert arbitrate("user.work_environment", 0.9) == "confirmed"
+
+
+def test_new_memory_fact_gets_expiry_from_the_ttl_map():
+    db = _MemoryDB()
+
+    async def run():
+        return await MemoryService._apply_memory_fact(
+            db, "u1", "user.research_direction", "锂电正极材料", 0.9, "confirmed",
+            source="test", request_id=None,
+        )
+
+    assert asyncio.run(run()) == "created"
+    row = _new_memory_row(db)
+    # 允许几秒误差，但必须真的是 30 天量级（防"写成秒/小时"这类单位错）
+    assert timedelta(days=29, hours=23) < row.expires_at - _now() <= timedelta(days=30)
+
+
+def test_repeat_mention_pushes_expiry_forward():
+    """「还在说」= 「还有效」：同内容再提一次要把 7 天重新计满。"""
+    stale = _memory_row("user.work_environment", "在生化化学实验室",
+                        expires_at=_now() + timedelta(hours=2))
+    db = _MemoryDB(existing=stale)
+
+    async def run():
+        return await MemoryService._apply_memory_fact(
+            db, "u1", "user.work_environment", "在生化化学实验室", 0.9, "confirmed",
+            source="test", request_id=None,
+        )
+
+    assert asyncio.run(run()) == "renewed"
+    assert stale.expires_at - _now() > timedelta(days=6, hours=23)
+    # 续期必须留痕，否则"到底续没续"只能靠翻 expires_at 猜
+    assert any(getattr(o, "event_type", None) == "renewed" for o in db.added)
+
+
+def test_keys_without_ttl_never_get_an_expiry():
+    """不过期的键不能被写成"某时刻过期"——那是把永久悄悄改成临时。"""
+    row = _memory_row("user.major", "计算机", expires_at=None)
+    db = _MemoryDB(existing=row)
+
+    async def run():
+        return await MemoryService._apply_memory_fact(
+            db, "u1", "user.major", "计算机", 0.95, "confirmed",
+            source="test", request_id=None,
+        )
+
+    assert asyncio.run(run()) == "skipped"
+    assert row.expires_at is None
+
+
+def test_changed_content_replaces_the_row_and_restarts_the_clock():
+    """内容变了走 supersede 重建，新行天然拿到重新起算的有效期。"""
+    old = _memory_row("user.research_direction", "锂电正极材料",
+                      expires_at=_now() + timedelta(days=1))
+    db = _MemoryDB(existing=old)
+
+    async def run():
+        return await MemoryService._apply_memory_fact(
+            db, "u1", "user.research_direction", "钠离子电池", 0.9, "confirmed",
+            source="test", request_id=None,
+        )
+
+    assert asyncio.run(run()) == "created"
+    assert old.status == "superseded"
+    row = _new_memory_row(db)
+    assert row.content == "钠离子电池"
+    assert row.expires_at - _now() > timedelta(days=29)

@@ -26,6 +26,8 @@ from yuxi.self_evolution.review_hook import (
 )
 from yuxi.self_evolution.service import CorrectionService
 
+from _fake_system_kv import fake_execute
+
 
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -185,11 +187,11 @@ class _FakeDB:
         self.added = []
         self.commits = 0
 
-    async def execute(self, *_args, **_kwargs):
-        return _FakeResult(self.rows)
+    async def execute(self, query, *_args, **_kwargs):
+        return fake_execute(self, query, lambda: _FakeResult(self.rows))
 
     async def get(self, _model, _key):
-        return self.kv
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
 
     def add(self, obj):
         self.added.append(obj)
@@ -281,11 +283,11 @@ class _SequencedDB:
         self.added = []
         self.commits = 0
 
-    async def execute(self, *_args, **_kwargs):
-        return _FakeResult(self._results.pop(0) if self._results else [])
+    async def execute(self, query, *_args, **_kwargs):
+        return fake_execute(self, query, lambda: _FakeResult(self._results.pop(0) if self._results else []))
 
     async def get(self, _model, _key):
-        return self.kv
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
 
     def add(self, obj):
         self.added.append(obj)

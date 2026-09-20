@@ -25,6 +25,8 @@ from yuxi.self_evolution.service import (
     _scope_label,
 )
 
+from _fake_system_kv import fake_execute
+
 
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -154,11 +156,11 @@ class _FakeDB:
         self._rows = rows
         self._kv = kv
 
-    async def execute(self, *_args, **_kwargs):
-        return _FakeResult(self._rows)
+    async def execute(self, query, *_args, **_kwargs):
+        return fake_execute(self, query, lambda: _FakeResult(self._rows))
 
     async def get(self, _model, _key):
-        return self._kv
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
 
 
 def _ticket(id, original, final, hints=None, tags=None, confidence=0.8, created=None):
@@ -299,6 +301,33 @@ def test_prefilter_pushes_entity_and_intent_gates_into_sql():
         assert _top_level_or_count(raw) == 0
 
 
+def test_prefilter_casts_json_columns_to_jsonb():
+    """entity_hints / intent_tags 在库里是 json 而不是 jsonb。
+
+    PG 的 jsonb_* 系列函数只收 jsonb：直接写 jsonb_typeof(json 列) 会抛
+    UndefinedFunctionError，并且会**污染整个事务**——同一次问答里后续所有查询
+    都跟着报 InFailedSQLTransactionError，表现为前台"流式处理失败"。
+    """
+    from sqlalchemy.dialects import postgresql
+
+    from yuxi.self_evolution.service import _jsonb_array_expr
+
+    expr = _jsonb_array_expr("correction_tickets.entity_hints")
+    assert "CAST(correction_tickets.entity_hints AS jsonb)" in expr
+    # 不能出现裸列直接喂给 jsonb_* 的形态
+    assert "jsonb_typeof(correction_tickets.entity_hints)" not in expr
+    # 下推后的条件里同样必须带转换
+    from sqlalchemy import select
+
+    from yuxi.self_evolution.service import _correction_prefilter_conditions
+    from yuxi.storage.postgres.models_business import CorrectionTicket
+
+    conds = _correction_prefilter_conditions(_DialectDB([]), "浓硫酸", "graph_rag_query")
+    sql = str(select(CorrectionTicket).where(*conds).compile(dialect=postgresql.dialect()))
+    assert "CAST(correction_tickets.entity_hints AS jsonb)" in sql
+    assert "CAST(correction_tickets.intent_tags AS jsonb)" in sql
+
+
 def test_scan_cap_hit_emits_warning(caplog):
     """触顶必须 WARNING——静默截断正是本次修掉的正确性隐患。"""
     import logging
@@ -327,12 +356,15 @@ class _FakeEnrichDB:
         self._kb_spec = kb_spec
         self.committed = False
 
-    async def execute(self, *_args, **_kwargs):
+    async def execute(self, query, *_args, **_kwargs):
         # kb_spec 设置时所有查询都回它（实体名查询自然匹配不到，无副作用）
-        return _FakeResult([self._kb_spec] if self._kb_spec is not None else self._names)
+        return fake_execute(
+            self, query,
+            lambda: _FakeResult([self._kb_spec] if self._kb_spec is not None else self._names),
+        )
 
     async def get(self, _model, _key):
-        return self._kv
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
 
     async def commit(self):
         self.committed = True

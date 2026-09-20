@@ -44,7 +44,6 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -65,9 +64,9 @@ from yuxi.storage.postgres.models_business import (
     AgentRun,
     Message,
     SessionFact,
-    SystemKV,
     UserMemoryFact,
 )
+from yuxi.storage.postgres.system_kv import get_system_kv
 from yuxi.utils.datetime_utils import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -94,8 +93,8 @@ EXTRACTION_SYSTEM_PROMPT = """你是对话记忆抽取器。给你一段用户�
 
 字段约束：
 - `fact_key` 只能取以下之一（不在其中的一律不要输出）：
-  user.major、user.education_stage、user.research_direction、user.lab_role、
-  user.response_preference、project.current_goal、project.phase_scope、
+  user.major、user.education_stage、user.research_direction、user.work_environment、
+  user.lab_role、user.response_preference、project.current_goal、project.phase_scope、
   project.constraints、project.acceptance_criteria、project.rejected_approach
 - `channel`：`memory` 表示跨会话的长期画像，`session` 表示只在当前会话有效的约束。
   （系统会按 fact_key 复核这一项，填错不会出错，但填对更好。）
@@ -229,13 +228,13 @@ async def resolve_config(db: AsyncSession) -> ExtractionConfig:
     model_spec: str | None = None
     min_interval = 0
     try:
-        kv = await db.get(SystemKV, MEMORY_OBSERVE_KV)
+        kv = await get_system_kv(db, MEMORY_OBSERVE_KV)
         if kv and isinstance(kv.value, dict) and "enabled" in kv.value:
             enabled = bool(kv.value["enabled"])
     except Exception:
         logger.exception("failed to read memory_observe kv")
     try:
-        kv = await db.get(SystemKV, ROUTING_KV)
+        kv = await get_system_kv(db, ROUTING_KV)
         value = kv.value if kv and isinstance(kv.value, dict) else {}
         spec = value.get("memory_model_spec")
         model_spec = str(spec).strip() if isinstance(spec, str) and spec.strip() else None

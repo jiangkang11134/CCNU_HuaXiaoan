@@ -25,7 +25,7 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 |---|---|---|
 | 事实键前缀 | `project.*` | `user.*` |
 | 作用域 | 仅当前会话 | 跨会话，仅本人，绝不共享 |
-| 有效期 | 2 天 TTL | 长期 |
+| 有效期 | 2 天 TTL | **分键**：多数长期有效，`user.research_direction` 30 天、`user.work_environment` 7 天；**再次提及即续期** |
 | 出生状态 | `observed` → `active`（同一事务内） | `candidate`，或直接 `confirmed` |
 | 覆盖 | 内容变了则旧条 `superseded` | 已 `confirmed` 的不被低置信度覆盖 |
 | 是否注入回答 | 是（`active` 且未过期） | **只有 `confirmed` 才注入** |
@@ -52,7 +52,11 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 
 - `user.major` —— 专业／学科背景。正例：「我是化学工程专业的」。反例：某次问到的实验原理。
 - `user.education_stage` —— 学历／培养阶段。正例：「我在读本科二年级」。反例：课程作业的截止日期。
-- `user.research_direction` —— 研究方向／在做的课题。正例：「我们组做锂电正极材料」。反例：本次问的单个化学品的闪点。
+- `user.research_direction` —— 研究方向／在做的课题。正例：「我们组做锂电正极材料」。反例：本次问的单个化学品的闪点。**有效期 30 天。**
+- `user.work_environment` —— **长期所处的实验／工作环境**（场所、实验室类型、常驻单位或院系）。
+  正例：「未来很大一段时间我都将待在生化化学实验室」「我常驻逸夫楼的危化品实验室」。
+  反例：「我们实验室没有通风橱」（那是本次的操作约束，走 `project.constraints`）、
+  「这周三在三楼做实验」（临时安排）。**有效期 7 天。**
 - `user.lab_role` —— 实验室角色。正例：「我是实验室安全员」「我带本科生的实验课」。反例：临时帮同学代做。
 - `user.response_preference` —— 回答形式偏好。正例：「回答简短点，别列长清单」「多用表格」「以后直接给结论」。反例：对某次回答内容的评价（那属于反馈，不属于偏好）。
 
@@ -64,7 +68,12 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 - `project.acceptance_criteria` —— 什么样算做完／做对。正例：「最后要能直接贴进安全培训材料」。
 - `project.rejected_approach` —— 用户已明确否决的方案。正例：「不要用 PPR 那种推导过程，太绕了」。
 
-**已知限制（别绕过去）**：白名单里没有「实验室设备条件」「所在院系」这类键。像「我们实验室没有通风橱」只能落 `project.constraints`（**仅本次会话有效**），不会变成跨会话的长期画像。这类信息若要长期保留，得先在 `MEMORY_FACT_KEYS` 加键并同步本文件，**不能靠把 `project.*` 当长期记忆用**——那正是「方向对穿」。
+**「长期待在哪」与「那里的临时条件」要分开**（2026-09-20 新增 `user.work_environment`）：
+用户说"未来很大一段时间我都将待在生化化学实验室"，这是跨会话画像，落 `user.work_environment`；
+而「我们实验室没有通风橱」这类**设备与操作条件**仍只落 `project.constraints`（**仅本次会话有效**）——
+它随时可能因为换实验室、换通风橱而失效，而系统拿不到任何"条件变了"的信号。
+仍然**不能靠把 `project.*` 当长期记忆用**：`project.*` 的语义就是"本会话有效"，
+当跨会话画像用会让下个会话继承上个会话的临时约束——那正是「方向对穿」。
 
 **置信度直接决定能否生效**（`observation.arbitrate`）：`user.*` 且置信度 ≥ `0.85` 才落 `confirmed`，才会被注入下一轮回答；低于 0.85 落 `candidate`，而候选态目前没有前端确认入口——**置信度给低了，这条记忆就等于没记**。因此用户明确陈述的给 0.9 以上，只在字里行间推断的给 0.5~0.7。
 
@@ -94,11 +103,15 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 
 - `fact_key` 只能取以下之一，不在其中的一律不要输出：
   - 长期画像（跨会话）：user.major（专业）、user.education_stage（学历阶段）、
-    user.research_direction（研究方向）、user.lab_role（实验室角色）、
+    user.research_direction（研究方向／在做的课题）、user.work_environment（长期所处的
+    实验／工作环境，即"长期待在哪个实验室、哪个院系"）、user.lab_role（实验室角色）、
     user.response_preference（回答形式偏好，如"要简短""多用表格"）
   - 会话约束（仅本次会话）：project.current_goal（本次目标）、project.phase_scope（本次范围）、
     project.constraints（本次约束，如"没有通风橱""只讨论常温常压"）、
     project.acceptance_criteria（验收标准）、project.rejected_approach（已否决的方案）
+- **别把"待在哪儿"记成研究方向**：「未来很大一段时间我都将待在生化化学实验室」讲的是
+  所处环境，抽 `user.work_environment`，不是 `user.research_direction`；
+  反过来「我们组做锂电正极材料」才是 `user.research_direction`。两者可以同时存在。
 - `channel`：`memory` 表示跨会话画像，`session` 表示只在当前会话有效。
   系统会按 `fact_key` 复核这一项，填错不会出错，但填对更好。
 - `content` 用一句话客观陈述，不超过 {limit} 字，不要带"用户说""据了解"之类前缀。
@@ -134,6 +147,7 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 - 「我是实验室安全员，平时负责危化品台账」→ 抽 2 条：`user.lab_role`=实验室安全员（0.95）、
   `project.current_goal`=整理危化品台账（0.85）。
 - 「我们组做锂电正极材料，主要是三元材料」→ 抽：`user.research_direction`=锂电正极材料（三元材料方向）（0.9）。
+- 「未来的很大一段时间，我都将待在生化化学实验室」→ 抽：`user.work_environment`=未来很长一段时间在生化化学实验室（0.9）。**不是** `user.research_direction`。
 - 「邮箱是 abc@xx.com，报告发我」→ 不抽。隐私信息，系统也会丢弃。
 
 没有值得留存的信息就输出 {"ops": []}，不要为了凑格式编造。
@@ -221,6 +235,9 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
   **不要在对话里假装已经忘了**——没落库就还会被注入。
 - 记忆明显过时（「我已经不在那个组了」）：照常回答，改口会在本轮抽取里被记为新值
   （`user.*` 走 supersede；旧的不会被低置信度覆盖）。
+- 问「这条会记多久」：如实说有效期——`user.research_direction` 30 天、`user.work_environment`
+  7 天，**再次提到就从当天重新计时**，其余键长期有效。到期只是不再注入（状态转 `expired`），
+  记录与变更历史都还在，用户仍可在「我的记忆」里看到并手动撤回。
 
 > **注**：这一节**目前不会自动进入回答 prompt**——`build_context` 只注入事实清单和一句免责声明。
 > 要让回答侧自动拿到这份口径，把上面「允许／禁止」的要点补进
@@ -232,6 +249,10 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 - **调整抽取口径**（加例子、改措辞、收紧尺度）：直接改上面「四」的段落，无需发版、无需改代码。抽取调用按 (mtime, size) 判断文件是否变化，编辑后下一次抽取即生效。
 - **让人 / Agent 也能查到它**：本技能由 `agents/skills/buildin/__init__.py` 注册、worker 启动时播种进技能表，但**只有把 `memory-extraction` 加进 Agent 的 skills 列表，Agent 才会在系统提示里看到它**（中间件只注入被选中的技能）。注意两件事互不影响：**这个 skill 没被任何 Agent 选中，抽取照旧按本文件运行**——抽取是平台能力，本文件是它的规格；要停抽取请用下面的 `memory_observe.enabled`。
 - **增删事实键**：必须**同时**改两处——`yuxi/memory/observation.py:MEMORY_FACT_KEYS` 和本文件的「二」「四」；两者由 `test/unit/memory/test_memory_skill_guide.py` 的漂移守卫对齐，只改一处会红。
+- **改有效期**：`yuxi/memory/observation.py:MEMORY_FACT_TTL_DAYS`（事实键 → 天数；**不在表里 = 不过期**），
+  由 `memory_fact_ttl()` 读出。注意它**只作用于新建与续期的行**：存量行不会被回填，
+  改完要么等它们自然被 supersede，要么手工补 `expires_at`。
+  改完同步本文件「一」的有效期行与「二」的键说明。兜底 prompt 不用改——它只列键，不写天数。
 - **只关抽取、不发版**：`SystemKV("memory_observe")` 的 `enabled` 置 false。
 - **节流**（省钱）：`SystemKV("model_routing")` 的 `memory_extract_min_interval`（秒）。节流**不推进游标**，被跳过的轮次会在下次一并抽。
 - **换抽取模型**：`SystemKV("model_routing")` 的 `memory_model_spec`；不配则跟随该会话正在用的模型。
@@ -248,5 +269,8 @@ description: "会话事实与长期记忆的抽取规范：从多轮问答中识
 - `dropped_ops` —— 有 op 被丢弃：白名单外、命中敏感词、或超出 8 条上限。
 - `channel_mismatch` —— 模型填的 `channel` 与服务端裁定的不一致（不报错，只说明模型理解偏差）。
 - `rejected` —— 走到 `arbitrate` 被拒（键不在白名单）。
+- `renewed` —— 同一条记忆被**再次提及**、有效期已往后推（内容没变，所以不算新建）。
+  这个计数是"续期到底有没有生效"的唯一直接信号；它长期为 0 就说明用户没再提，
+  那条记忆会在 TTL 到期时被 `expire_memories` 置为 `expired`。
 
 排查顺序：先看事件计数定位是"没调起来"（`call_failed`/`throttled`）还是"调起来了但抽不出"（`empty_response`/`parse_failed`/`dropped_ops`），再确认 `UserConfig.enable_memory`（`user.*` 不落库）、`memory_observe.enabled`（整体关闭）、以及游标是否停在旧位置（`MemoryExtractCursor`，`memory/cursor.py`）。

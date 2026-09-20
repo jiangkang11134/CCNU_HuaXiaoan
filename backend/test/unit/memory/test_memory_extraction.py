@@ -26,6 +26,30 @@ from yuxi.memory.extraction import (
 )
 from yuxi.utils.datetime_utils import utc_now_naive
 
+from _fake_system_kv import fake_execute
+
+
+class _EmptyResult:
+    """非 SystemKV 查询的回落结果：本文件只关心配置读取。"""
+
+    def scalar_one_or_none(self):
+        return None
+
+    def scalar(self):
+        return None
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+    def first(self):
+        return None
+
+    def __iter__(self):
+        return iter(self.all())
+
 
 # --------------------------------------------------------------------------
 # 历史消息里残留的旧协议块
@@ -181,8 +205,10 @@ class _KVDB:
         self._kv = kv
 
     async def get(self, _model, key):
-        value = self._kv.get(key)
-        return SimpleNamespace(value=value) if value is not None else None
+        raise AssertionError("SystemKV 不能按主键取：主键是整型 id，必须 select(...).filter(key == ...)")
+
+    async def execute(self, query):
+        return fake_execute(self, query, _EmptyResult())
 
 
 @pytest.mark.asyncio

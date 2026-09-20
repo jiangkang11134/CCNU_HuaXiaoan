@@ -29,7 +29,7 @@ from yuxi.storage.postgres.models_business import (
     UserMemoryFact,
 )
 
-from .observation import CHANNEL_MEMORY, CHANNEL_SESSION, arbitrate
+from .observation import CHANNEL_MEMORY, CHANNEL_SESSION, arbitrate, memory_fact_ttl
 from .state_machine import transition
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,34 @@ def _new_session_status() -> str:
 def _tokens(text: str) -> set[str]:
     words = re.findall(r"[A-Za-z0-9_]{2,}|[\u4e00-\u9fff]", (text or "").lower())
     return set(words)
+
+
+def _memory_expiry(fact_key: str) -> datetime | None:
+    """新建长期记忆时的到期时间；该键不过期则返回 ``None``。
+
+    ``None`` 直接落库成空列，这正是 ``list_memories`` / ``build_context`` 里
+    ``expires_at IS NULL OR expires_at > now()`` 认定的"永不过期"。
+    """
+    ttl = memory_fact_ttl(fact_key)
+    return None if ttl is None else _now() + ttl
+
+
+def _refresh_memory_expiry(row: UserMemoryFact) -> bool:
+    """再次提及同一条记忆时，把有效期往后推满一个 TTL。返回是否真的改了。
+
+    「还在说」= 「还有效」。抽取只在**内容相同**时才走这里（内容变了会 supersede 重建，
+    新行天然拿到新的 expires_at），所以这个刷新既不会延长用户已经改口的旧值，
+    也不会让一条早就不再被提及的记忆靠后门续命。
+
+    **不过期的键在这里什么都不做**：它们的 ``expires_at`` 本来就是空的，
+    硬写一个值会把"永久"悄悄变成"某时刻过期"——这正是本项目反复踩过的
+    "默认值/空值被赋了一个看似无害的具体值"那类坑。
+    """
+    ttl = memory_fact_ttl(row.fact_key)
+    if ttl is None:
+        return False
+    row.expires_at = _now() + ttl
+    return True
 
 
 class MemoryService:
@@ -332,16 +360,24 @@ class MemoryService:
         source: str,
         request_id: str | None,
     ) -> str:
-        """写一条长期记忆，返回 ``created`` / ``confirmed`` / ``skipped``。
+        """写一条长期记忆，返回 ``created`` / ``confirmed`` / ``renewed`` / ``skipped``。
 
         已 confirmed 的旧事实不会被低置信度的新抽取覆盖——宁可保留用户已确认的，
         也不让模型的一次猜测把它推翻。
+
+        新建时按 :func:`yuxi.memory.observation.memory_fact_ttl` 写入 ``expires_at``
+        （没有 TTL 的键留空 = 永久）；**内容相同的重复提及会续期**，见
+        :func:`_refresh_memory_expiry`。
         """
         memory = (await db.execute(select(UserMemoryFact).where(
             UserMemoryFact.uid == uid, UserMemoryFact.fact_key == fact_key,
             UserMemoryFact.status.in_(ACTIVE_MEMORY),
         ))).scalar_one_or_none()
         if memory and memory.content == content:
+            # 内容没变，但"用户又提了一次"本身就是有效性信号：把有效期往后推。
+            # 放在状态判断之前，是因为续期与"是否顺带升级成 confirmed"是两件事：
+            # 一条 candidate 被再次提及也该续期，否则它在被确认前就可能先过期。
+            renewed = _refresh_memory_expiry(memory)
             if status == "confirmed" and memory.status != "confirmed":
                 before = memory.status
                 memory.status = transition(before, "confirmed")
@@ -349,8 +385,15 @@ class MemoryService:
                 memory.confirmed_at, memory.confirmed_by = _now(), uid
                 await MemoryService._record_event(
                     db, uid, "user_memory", memory.id, "confirmed", before, "confirmed",
-                    {"source": source}, actor_type="llm", request_id=request_id)
+                    {"source": source, "renewed": renewed}, actor_type="llm", request_id=request_id)
                 return "confirmed"
+            if renewed:
+                # 记一条事件，否则"续期到底有没有生效"只能靠查 expires_at 猜。
+                await MemoryService._record_event(
+                    db, uid, "user_memory", memory.id, "renewed", memory.status, memory.status,
+                    {"source": source, "expires_at": memory.expires_at.isoformat()},
+                    actor_type="llm", request_id=request_id)
+                return "renewed"
             return "skipped"
         if memory:
             if memory.status == "confirmed" and status != "confirmed":
@@ -362,12 +405,14 @@ class MemoryService:
                 {"source": source}, request_id=request_id)
         row = UserMemoryFact(
             uid=uid, fact_key=fact_key, content=content, status=status,
-            confidence=confidence, source_request_id=request_id)
+            confidence=confidence, source_request_id=request_id,
+            expires_at=_memory_expiry(fact_key))
         db.add(row)
         await db.flush()
         await MemoryService._record_event(
             db, uid, "user_memory", row.id, "created", None, status,
-            {"fact_key": fact_key, "source": source, "confidence": confidence},
+            {"fact_key": fact_key, "source": source, "confidence": confidence,
+             "expires_at": row.expires_at.isoformat() if row.expires_at else None},
             actor_type="llm", request_id=request_id)
         return "created"
 
@@ -392,7 +437,7 @@ class MemoryService:
 
         长期记忆仍受用户级 ``memory_enabled`` 控制；会话事实不受它管（设计文档 §2.3）。
         """
-        stats = {"session": 0, "memory": 0, "confirmed": 0, "rejected": 0, "skipped": 0}
+        stats = {"session": 0, "memory": 0, "confirmed": 0, "renewed": 0, "rejected": 0, "skipped": 0}
         if not ops:
             return stats
         for channel, fact_key, content, confidence, request_id in ops:
@@ -424,6 +469,10 @@ class MemoryService:
                 stats["memory"] += 1
             elif outcome == "confirmed":
                 stats["confirmed"] += 1
+            elif outcome == "renewed":
+                # 单独计数而不是并进 skipped：续期是"这条记忆又被提了一次"的证据，
+                # 与"内容重复、什么都没发生"在排查时含义完全相反。
+                stats["renewed"] += 1
             else:
                 stats["skipped"] += 1
         await db.commit()

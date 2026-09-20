@@ -19,6 +19,7 @@ from yuxi.self_evolution.review_hook import clear_review_flag
 from yuxi.self_evolution.scope import SCOPE_KB_TRUTH, SCOPE_LABELS, VALID_SCOPES
 from yuxi.self_evolution.service import CorrectionService
 from yuxi.self_evolution.tasks import enqueue_correction_graph_writeback
+from yuxi.storage.postgres.system_kv import get_system_kv
 from yuxi.storage.postgres.models_business import CorrectionTicket, SystemKV, User
 from yuxi.utils.datetime_utils import ensure_utc, format_naive_utc_datetime
 from server.utils.auth_middleware import get_admin_user, get_db, get_required_user
@@ -104,7 +105,7 @@ async def review_correction(ticket_id: int, payload: dict, db: AsyncSession = De
     enrichment = None
     if row.status == "approved":
         try:
-            routing_row = await db.get(SystemKV, "model_routing")
+            routing_row = await get_system_kv(db, "model_routing")
             routing = routing_row.value if routing_row and isinstance(routing_row.value, dict) else {}
             enrichment = await enrich_correction(db, row, routing)
         except Exception:

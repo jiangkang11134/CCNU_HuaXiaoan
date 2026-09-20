@@ -23,8 +23,8 @@ x-api-worker-env: &api-worker-env
   SANDBOX_VIRTUAL_PATH_PREFIX: ${SANDBOX_VIRTUAL_PATH_PREFIX:-/home/gem/user-data}
   SANDBOX_EXEC_TIMEOUT_SECONDS: ${SANDBOX_EXEC_TIMEOUT_SECONDS:-180}
   SANDBOX_MAX_OUTPUT_BYTES: ${SANDBOX_MAX_OUTPUT_BYTES:-262144}
-  NO_PROXY: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
-  no_proxy: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd,etcd,mineru,paddlex,sandbox-provisioner,api.siliconflow.cn
+  NO_PROXY: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd,etcd,mineru,paddlex,sandbox-provisioner,embedding,api.siliconflow.cn
+  no_proxy: localhost,127.0.0.1,milvus,graph,minio,milvus-etcd,etcd,mineru,paddlex,sandbox-provisioner,embedding,api.siliconflow.cn
 
 services:
   api:
@@ -139,6 +139,33 @@ services:
       timeout: 5s
       retries: 6
       start_period: 10s
+    restart: unless-stopped
+
+  # Local embedding + rerank service. Needed because the campus relay returns
+  # 503 for /v1/embeddings and the host has no public internet access; without a
+  # working embedding backend the RAG pipeline cannot vectorise queries at all.
+  embedding:
+    build:
+      context: ./docker/embedding
+      dockerfile: Dockerfile
+    image: yuxi-embed:local
+    container_name: embedding-prod
+    networks:
+      - app-network
+    volumes:
+      # Model weights live outside the image so rebuilds do not re-download ~4.5 GB.
+      - ${YUXI_DATA_DIR:-./docker/volumes}/embedding-models:/models
+    environment:
+      HF_ENDPOINT: https://hf-mirror.com
+      MODEL_CACHE_DIR: /models
+      OMP_NUM_THREADS: "8"
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 12
+      start_period: 300s
     restart: unless-stopped
 
   web:

@@ -35,8 +35,8 @@ async def _resolve_embedding_spec(db: AsyncSession, row) -> str | None:
     全局工单（kb_id 为空）且未配置覆盖时无向量可用——检索侧自动降级稀疏路。
     """
     try:
-        from yuxi.storage.postgres.models_business import SystemKV
-        kv = await db.get(SystemKV, CORRECTION_RETRIEVAL_KV)
+        from yuxi.storage.postgres.system_kv import get_system_kv
+        kv = await get_system_kv(db, CORRECTION_RETRIEVAL_KV)
         if kv and isinstance(kv.value, dict) and kv.value.get("embedding_spec"):
             return str(kv.value["embedding_spec"])
     except Exception:

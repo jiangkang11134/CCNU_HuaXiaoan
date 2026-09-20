@@ -4,15 +4,14 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from yuxi.services.langfuse_service import submit_user_feedback_score
 from yuxi.storage.postgres.models_business import (
     Conversation,
     Message,
     MessageFeedback,
-    SystemKV,
     User,
 )
+from yuxi.storage.postgres.system_kv import get_system_kv
 from yuxi.utils.datetime_utils import format_naive_utc_datetime
 from yuxi.utils.logging_config import logger
 
@@ -65,7 +64,7 @@ async def _feedback_to_ticket_enabled(db: AsyncSession) -> bool:
     调用方的 try/except，而不是把开关关掉。
     """
     try:
-        kv = await db.get(SystemKV, FEEDBACK_TO_TICKET_KV)
+        kv = await get_system_kv(db, FEEDBACK_TO_TICKET_KV)
         if kv and isinstance(kv.value, dict) and "enabled" in kv.value:
             return bool(kv.value["enabled"])
     except Exception:
