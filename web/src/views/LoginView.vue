@@ -20,7 +20,7 @@
         <div class="brand-container" @click="goHome" style="cursor: pointer">
           <img v-if="brandLogo" :src="brandLogo" alt="logo" class="brand-logo" />
           <h1 class="brand-text">
-            <span v-if="brandOrgName" class="brand-org">{{ brandOrgName }}</span>
+            <span v-if="brandOrgName && brandOrgName !== brandName" class="brand-org">{{ brandOrgName }}</span>
             <span v-if="brandOrgName && brandName !== brandOrgName" class="brand-separator"></span>
             <span class="brand-main">{{ brandName }}</span>
           </h1>
@@ -339,7 +339,7 @@ const brandOrgName = computed(() => {
 })
 const brandName = computed(() => {
   const orgName = brandOrgName.value
-  const brandNameRaw = infoStore.branding?.name?.trim() || '实验室安全教育智能对话平台'
+  const brandNameRaw = infoStore.branding?.name?.trim() || '实验室安全教育AI智能体系统'
 
   if (orgName && brandNameRaw && orgName !== brandNameRaw) {
     return brandNameRaw

@@ -78,7 +78,7 @@ const currentTime = ref('')
 
 // 计算属性
 const systemTitle = computed(
-  () => infoStore.frontend?.system_name?.trim() || infoStore.branding?.name?.trim() || '实验室安全教育智能对话平台'
+  () => infoStore.frontend?.system_name?.trim() || infoStore.branding?.name?.trim() || '实验室安全教育AI智能体系统'
 )
 
 // 用户名计算属性

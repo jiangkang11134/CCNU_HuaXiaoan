@@ -3,15 +3,15 @@
 
 # 组织信息
 organization:
-  name: "实验室安全教育智能对话平台"           # 完整组织名称
+  name: "实验室安全教育AI智能体系统"           # 完整组织名称
   logo: "/favicon.svg"       # Logo文件路径（放在 web/public 目录下）
   avatar: "/avatar.jpg"      # 头像文件路径（放在 web/public 目录下）
   login_bg: "/lab-safety-login-bg.svg"  # 登录背景图片路径（放在 web/public 目录下）
 
 # 项目信息
 branding:
-  name: "实验室安全教育智能对话平台"
-  title: "实验室安全教育智能对话平台"     # 系统标题
+  name: "实验室安全教育AI智能体系统"
+  title: "实验室安全教育AI智能体系统"     # 系统标题
   subtitle: "面向实验室安全教育的智能问答与隐患识别平台"          # 副标题（subtitles 为空时使用）
   subtitles:
     - "面向实验室安全教育的智能问答与隐患识别平台"
@@ -22,6 +22,6 @@ branding:
 
 # 页脚信息
 footer:
-  copyright: "© 实验室安全教育智能对话平台 2026"
+  copyright: "© 实验室安全教育AI智能体系统 2026"
   user_agreement_url: "/protocols/user-agreement.template.html"
   privacy_policy_url: "/protocols/privacy-policy.template.html"

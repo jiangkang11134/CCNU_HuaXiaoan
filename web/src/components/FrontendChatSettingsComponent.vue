@@ -5,7 +5,7 @@
         <a-card v-if="activeSection === 'branding'" size="small" title="品牌展示" :bordered="true">
           <a-form layout="vertical">
             <a-form-item label="组织名称">
-              <a-input v-model:value="config.organization_name" placeholder="实验室安全教育智能对话平台" />
+              <a-input v-model:value="config.organization_name" placeholder="实验室安全教育AI智能体系统" />
             </a-form-item>
             <a-form-item label="侧边栏头像">
               <a-input v-model:value="config.organization_avatar" placeholder="/avatar.jpg" />
@@ -32,10 +32,10 @@
               </div>
             </a-form-item>
             <a-form-item label="浏览器标题">
-              <a-input v-model:value="config.browser_title" placeholder="实验室安全教育智能对话平台" />
+              <a-input v-model:value="config.browser_title" placeholder="实验室安全教育AI智能体系统" />
             </a-form-item>
             <a-form-item label="系统名称">
-              <a-input v-model:value="config.system_name" placeholder="实验室安全教育智能对话平台" />
+              <a-input v-model:value="config.system_name" placeholder="实验室安全教育AI智能体系统" />
             </a-form-item>
           </a-form>
         </a-card>
@@ -129,13 +129,13 @@ defineProps({
 })
 
 const DEFAULT_CONFIG = {
-  organization_name: '实验室安全教育智能对话平台',
+  organization_name: '实验室安全教育AI智能体系统',
   organization_avatar: '/avatar.jpg',
   organization_logo: '/favicon.svg',
-  browser_title: '实验室安全教育智能对话平台',
-  system_name: '实验室安全教育智能对话平台',
+  browser_title: '实验室安全教育AI智能体系统',
+  system_name: '实验室安全教育AI智能体系统',
   welcome_title_mode: 'dynamic',
-  welcome_title: '实验室安全教育智能对话平台',
+  welcome_title: '实验室安全教育AI智能体系统',
   frontend_input_placeholder: '请输入实验室安全教育相关问题',
   default_agent_id: '',
   selectable_agent_ids: [],

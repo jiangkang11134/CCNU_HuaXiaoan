@@ -19,14 +19,14 @@ from yuxi.storage.postgres.models_business import Agent, SystemKV, User
 FRONTEND_BUSINESS_ROLES = {"student", "faculty"}
 FRONTEND_CHAT_CONFIG_KEY = "frontend_chat_config"
 FRONTEND_CHAT_CONFIG_DEFAULT = {
-    "organization_name": "实验室安全教育智能对话平台",
+    "organization_name": "实验室安全教育AI智能体系统",
     "organization_avatar": "/avatar.jpg",
     "organization_logo": "/favicon.svg",
     "login_bg": "/lab-safety-login-bg.svg",
-    "browser_title": "实验室安全教育智能对话平台",
-    "system_name": "实验室安全教育智能对话平台",
+    "browser_title": "实验室安全教育AI智能体系统",
+    "system_name": "实验室安全教育AI智能体系统",
     "welcome_title_mode": "dynamic",
-    "welcome_title": "实验室安全教育智能对话平台",
+    "welcome_title": "实验室安全教育AI智能体系统",
     "frontend_input_placeholder": "请输入实验室安全教育相关问题",
     "default_agent_id": "",
     "selectable_agent_ids": [],
@@ -43,11 +43,13 @@ FRONTEND_CHAT_CONFIG_DEFAULT = {
     "show_reference_documents": True,
 }
 DEPRECATED_LOGIN_BG_PATHS = {"/login-bg.jpg"}
+# 历史遗留的系统名/单位名，读取时一律纠正为当前默认值（防止旧配置回潮）。
+LEGACY_SYSTEM_NAME_VALUES = {"实验室安全教育智能对话平台"}
 DEPRECATED_FRONTEND_CONFIG_VALUES = {
-    "organization_name": {"江南语析", "Yuxi", "语析"},
-    "browser_title": {"语析 - Knowledge Management", "Yuxi", "语析 Yuxi"},
-    "system_name": {"智能AI对话系统", "Yuxi", "语析"},
-    "welcome_title": {"智能AI对话系统", "Yuxi", "语析"},
+    "organization_name": {"江南语析", "Yuxi", "语析"} | LEGACY_SYSTEM_NAME_VALUES,
+    "browser_title": {"语析 - Knowledge Management", "Yuxi", "语析 Yuxi"} | LEGACY_SYSTEM_NAME_VALUES,
+    "system_name": {"智能AI对话系统", "Yuxi", "语析"} | LEGACY_SYSTEM_NAME_VALUES,
+    "welcome_title": {"智能AI对话系统", "Yuxi", "语析"} | LEGACY_SYSTEM_NAME_VALUES,
     "frontend_input_placeholder": {"基于知识库的 RAG 问答，快速准确地回答问题"},
 }
 
