@@ -28,6 +28,29 @@ async def test_list_api_keys_requires_admin(test_client, admin_headers):
     assert "total" in data
 
 
+async def test_non_admin_cannot_touch_api_keys(test_client, standard_user):
+    """普通用户/教师账号不得查看、创建或管理 API Key（前后端均无此入口）。"""
+    headers = standard_user["headers"]
+
+    list_response = await test_client.get(API_KEYS_PATH, headers=headers)
+    assert list_response.status_code == 403, list_response.text
+
+    create_response = await test_client.post(API_KEYS_PATH, json={"name": "Forbidden"}, headers=headers)
+    assert create_response.status_code == 403, create_response.text
+
+    get_response = await test_client.get(f"{API_KEYS_PATH}1", headers=headers)
+    assert get_response.status_code == 403, get_response.text
+
+    put_response = await test_client.put(f"{API_KEYS_PATH}1", json={"name": "Forbidden"}, headers=headers)
+    assert put_response.status_code == 403, put_response.text
+
+    delete_response = await test_client.delete(f"{API_KEYS_PATH}1", headers=headers)
+    assert delete_response.status_code == 403, delete_response.text
+
+    regenerate_response = await test_client.post(f"{API_KEYS_PATH}1/regenerate", headers=headers)
+    assert regenerate_response.status_code == 403, regenerate_response.text
+
+
 async def test_create_api_key(test_client, admin_headers):
     """Admin should be able to create a new API key."""
     payload = {

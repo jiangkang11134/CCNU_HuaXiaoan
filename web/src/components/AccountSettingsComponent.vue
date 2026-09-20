@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="header-content">
         <div class="section-title">账户设置</div>
-        <p class="section-description">管理当前账户资料、身份信息和 API Key。</p>
+        <p class="section-description">{{ sectionDescription }}</p>
       </div>
       <a-button class="lucide-icon-btn" :loading="refreshing" @click="refreshProfile">
         <template #icon><RefreshCw :size="16" :class="{ spin: refreshing }" /></template>
@@ -104,7 +104,7 @@
       </div>
     </div>
 
-    <div class="account-card apikey-card">
+    <div v-if="userStore.isAdmin" class="account-card apikey-card">
       <ApiKeyManagementComponent />
     </div>
   </div>
@@ -132,6 +132,13 @@ const profileDraft = reactive({
 })
 
 const avatarDefaultSrc = computed(() => (userStore.uid ? generatePixelAvatar(userStore.uid) : ''))
+
+// API Key 仅系统管理员可见（后端同样仅 system_admin 可调用）
+const sectionDescription = computed(() =>
+  userStore.isAdmin
+    ? '管理当前账户资料、身份信息和 API Key。'
+    : '管理当前账户资料与身份信息。'
+)
 
 const userRoleText = computed(() => {
   switch (userStore.userRole) {
