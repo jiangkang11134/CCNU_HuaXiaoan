@@ -257,6 +257,21 @@
 
     <div class="send-button-container">
       <slot name="actions-right"></slot>
+      <a-tooltip v-if="showVoiceButton" :title="voiceButtonTitle">
+        <a-button
+          @click="handleVoiceToggle"
+          :disabled="voiceButtonDisabled"
+          type="link"
+          class="voice-button"
+          :class="{ 'is-listening': isVoiceListening }"
+          :aria-label="voiceButtonTitle"
+        >
+          <template #icon>
+            <Square v-if="isVoiceListening" class="voice-btn" :size="13" />
+            <Mic v-else class="voice-btn" :size="16" />
+          </template>
+        </a-button>
+      </a-tooltip>
       <a-tooltip v-if="showSendButton" :title="isLoading ? '停止回答' : ''">
         <a-button
           @click="handleSendOrStop"
@@ -290,7 +305,9 @@ import {
   render
 } from 'vue'
 import { SendOutlined, ArrowUpOutlined, PauseOutlined } from '@ant-design/icons-vue'
-import { Paperclip } from 'lucide-vue-next'
+import { Paperclip, Mic, Square } from 'lucide-vue-next'
+import { message } from 'ant-design-vue'
+import { useVoiceInput } from '@/composables/useVoiceInput'
 import { searchMentionFiles } from '@/apis/mention_api'
 import FileTypeIcon from '@/components/common/FileTypeIcon.vue'
 import {
@@ -373,6 +390,11 @@ const props = defineProps({
     default: false
   },
   showSendButton: {
+    type: Boolean,
+    default: true
+  },
+  // 是否启用语音输入（浏览器不支持时按钮自动隐藏）
+  voiceInputEnabled: {
     type: Boolean,
     default: true
   }
@@ -1119,6 +1141,11 @@ const handleKeyUp = (e) => {
 const handleInput = () => {
   if (isComposing.value) return
 
+  // 录音期间用户手动编辑过内容，重新对齐语音插入基线
+  if (voice.isListening.value) {
+    syncVoiceSnapshot()
+  }
+
   if (inputRef.value && !inputRef.value.querySelector('.mention-ref-token')) {
     const text = inputRef.value.textContent || ''
     if (!text.trim()) {
@@ -1209,6 +1236,61 @@ const searchRequestId = ref(0)
 const isComposing = ref(false)
 let activeAbortController = null
 let mentionSearchTimer = null
+
+// —— 语音输入 ——
+// 录音开始时记录「基线文本 + 光标区间」，识别结果实时替换该区间，
+// 这样语音与键盘可以混用，也不会破坏已有的 @提及 token。
+const voice = useVoiceInput({ lang: 'zh-CN' })
+let voiceSnapshot = null
+
+const showVoiceButton = computed(() => props.voiceInputEnabled && voice.isSupported.value)
+const voiceButtonDisabled = computed(() => props.disabled || props.isLoading)
+const isVoiceListening = computed(() => voice.isListening.value)
+const voiceButtonTitle = computed(() => (voice.isListening.value ? '停止语音输入' : '语音输入'))
+
+// 重新对齐基线：录音期间用户手动编辑过输入框时调用
+// 光标区间一律收敛为一个插入点，保证「空识别结果」写回时不会误删选中内容
+const syncVoiceSnapshot = () => {
+  const range = getRawSelectionRange()
+  const caret = range.collapsed ? range.end : range.start
+  voiceSnapshot = { base: getEditorRawValue(), start: caret, end: caret }
+}
+
+const handleVoiceToggle = () => {
+  if (voice.isListening.value) {
+    voice.stop()
+    return
+  }
+  syncVoiceSnapshot()
+  voice.start()
+}
+
+// 识别结果实时上屏（含临时结果，逐字刷新）
+watch(voice.transcript, (text) => {
+  if (!voiceSnapshot || !voice.isListening.value) return
+  const { base, start, end } = voiceSnapshot
+  // 空结果且基线本身就是插入点：无需改动，避免无谓重渲染
+  if (!text && start === end) return
+  const nextValue = `${base.slice(0, start)}${text}${base.slice(end)}`
+  updateRawValue(nextValue, start + text.length)
+})
+
+// 出错时提示一次（权限被拒 / 服务不可达 / 非 HTTPS 等）
+watch(voice.errorMessage, (msg) => {
+  if (!msg) return
+  message.warning(msg)
+  voice.errorMessage.value = ''
+})
+
+// 输入框被禁用或正在回答时，自动停止收音
+watch(
+  () => [props.disabled, props.isLoading],
+  ([isDisabled, isBusy]) => {
+    if ((isDisabled || isBusy) && voice.isListening.value) {
+      voice.stop()
+    }
+  }
+)
 
 const adjustTextareaHeight = () => {
   if (!inputRef.value) {
@@ -1530,6 +1612,56 @@ defineExpose({
       color: var(--main-600);
       background-color: var(--main-10);
     }
+  }
+}
+
+.voice-button.ant-btn-icon-only {
+  height: 32px;
+  width: 32px;
+  margin-right: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-600);
+  background-color: transparent;
+  transition: all 0.2s ease;
+
+  &:hover {
+    color: var(--main-color);
+    background-color: var(--gray-50);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: transparent;
+  }
+
+  // 正在收音：红色 + 呼吸光圈，给出明确的「麦克风开着」反馈
+  &.is-listening {
+    color: var(--gray-0);
+    background-color: #ff4d4f;
+    animation: voice-listening-pulse 1.4s ease-in-out infinite;
+
+    &:hover {
+      color: var(--gray-0);
+      background-color: #ff4d4f;
+    }
+  }
+}
+
+@keyframes voice-listening-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgba(255, 77, 79, 0);
   }
 }
 

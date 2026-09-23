@@ -12,6 +12,7 @@
     :file-upload-enabled="supportsFileUpload"
     :image-upload-enabled="supportsImageUpload"
     :show-send-button="showSendButton"
+    :voice-input-enabled="supportsVoiceInput"
     @send="handleSend"
     @keydown="handleKeyDown"
     @paste-image="handlePastedImage"
@@ -96,6 +97,7 @@ const props = defineProps({
   supportsFileUpload: { type: Boolean, default: false },
   supportsImageUpload: { type: Boolean, default: false },
   showSendButton: { type: Boolean, default: true },
+  supportsVoiceInput: { type: Boolean, default: true },
   attachments: {
     type: Array,
     default: () => []
