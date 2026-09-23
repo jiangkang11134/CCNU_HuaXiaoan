@@ -44,6 +44,9 @@ const MAX_NO_SPEECH = 3
 const MAX_RESTARTS = 60
 // onend 与再次 start 之间的间隔，避免 Chrome 引擎未释放导致 InvalidStateError
 const RESTART_DELAY = 150
+// stop() 后等待浏览器补发「最后一段定稿」的上限；超时则强制回到停止态，
+// 防止个别浏览器不触发 onend 时按钮一直停在录音中
+const STOP_FALLBACK_DELAY = 1200
 
 export function useVoiceInput(options = {}) {
   const { lang = 'zh-CN', interimResults = true } = options
@@ -66,6 +69,7 @@ export function useVoiceInput(options = {}) {
   let noSpeechCount = 0
   let restartCount = 0
   let restartTimer = null
+  let stopFallbackTimer = null
 
   const clearRestartTimer = () => {
     if (restartTimer) {
@@ -74,16 +78,42 @@ export function useVoiceInput(options = {}) {
     }
   }
 
-  const stop = () => {
-    shouldListen = false
+  const clearStopFallbackTimer = () => {
+    if (stopFallbackTimer) {
+      clearTimeout(stopFallbackTimer)
+      stopFallbackTimer = null
+    }
+  }
+
+  const settleStopped = () => {
     isListening.value = false
     interimText.value = ''
+    clearStopFallbackTimer()
+  }
+
+  const stop = () => {
+    shouldListen = false
     clearRestartTimer()
-    if (!recognition) return
+    if (!recognition) {
+      settleStopped()
+      return
+    }
+
+    // 刻意「不」在这里立刻熄灭 isListening / 清空 interimText：
+    // 浏览器停止收音时会先把最后一段补发成 isFinal 的 onresult，再触发 onend。
+    // 若此刻就标记为已停止，使用方的写回逻辑会被自己的「监听中」判断挡掉，
+    // 表现为「说完立刻点停止 → 最后一个片段丢失」。
+    clearStopFallbackTimer()
+    stopFallbackTimer = setTimeout(() => {
+      stopFallbackTimer = null
+      if (!shouldListen) settleStopped()
+    }, STOP_FALLBACK_DELAY)
+
     try {
       recognition.stop()
     } catch (err) {
       // 已经停止时再调 stop() 会抛错，属于正常情况
+      settleStopped()
     }
   }
 
@@ -136,21 +166,26 @@ export function useVoiceInput(options = {}) {
       if (FATAL_ERROR_CODES.has(code)) {
         errorMessage.value = ERROR_MESSAGES[code] || '语音识别失败，请重试或改用键盘输入。'
         stop()
+        // 致命错误下识别已经废了，不指望 onend 收尾；立刻回到停止态让按钮可再点
+        settleStopped()
       }
     }
 
     instance.onend = () => {
-      interimText.value = ''
       if (!shouldListen) {
-        isListening.value = false
+        // 走到这里说明最后一次定稿已经发完，可以安全回到停止态
+        settleStopped()
         return
       }
+      interimText.value = ''
 
       // 浏览器静默后自动断开会走到这里，续接以维持持续输入
       restartCount += 1
       if (restartCount > MAX_RESTARTS) {
         errorMessage.value = '语音输入已持续较长时间，已自动停止。'
-        stop()
+        // 已处于 onend（会话真的结束了），直接收尾，不必等 stop() 的兜底计时器
+        shouldListen = false
+        settleStopped()
         return
       }
 
@@ -162,12 +197,26 @@ export function useVoiceInput(options = {}) {
           recognition.start()
         } catch (err) {
           shouldListen = false
-          isListening.value = false
+          settleStopped()
         }
       }, RESTART_DELAY)
     }
 
     return instance
+  }
+
+  // 摘掉回调再 abort：否则 abort 触发的 onend 可能把会话又续接起来
+  const detachRecognition = (instance) => {
+    if (!instance) return
+    instance.onstart = null
+    instance.onresult = null
+    instance.onerror = null
+    instance.onend = null
+    try {
+      instance.abort()
+    } catch (err) {
+      // 忽略：实例可能已停止
+    }
   }
 
   const start = () => {
@@ -180,6 +229,14 @@ export function useVoiceInput(options = {}) {
       return
     }
     if (shouldListen) return
+
+    // 上一轮 stop() 可能还在等浏览器补发最后一段（isListening 仍为 true）：
+    // 必须先彻底了断旧实例，否则新旧两个实例会同时回调同一份状态。
+    clearStopFallbackTimer()
+    clearRestartTimer()
+    detachRecognition(recognition)
+    recognition = null
+    settleStopped()
 
     finalText.value = ''
     interimText.value = ''
@@ -216,18 +273,12 @@ export function useVoiceInput(options = {}) {
   onBeforeUnmount(() => {
     shouldListen = false
     clearRestartTimer()
-    if (!recognition) return
-    // 先摘掉回调，避免 abort 触发的 onend 再次启动
-    recognition.onstart = null
-    recognition.onresult = null
-    recognition.onerror = null
-    recognition.onend = null
-    try {
-      recognition.abort()
-    } catch (err) {
-      // 忽略：实例可能已停止
-    }
+    clearStopFallbackTimer()
+    detachRecognition(recognition)
     recognition = null
+    // 不留悬空的「监听中」状态：父组件若仍持有这些 ref 也不应看到假的收音态
+    isListening.value = false
+    interimText.value = ''
   })
 
   return {
